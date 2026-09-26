@@ -1,504 +1,621 @@
-const video = document.getElementById("video");
-const canvas = document.getElementById("overlay");
+const $ = id => document.getElementById(id);
+
+const video = $("video");
+const canvas = $("overlay");
 const ctx = canvas.getContext("2d");
-const startBtn = document.getElementById("startBtn");
-const resetBtn = document.getElementById("resetBtn");
-const frontBtn = document.getElementById("frontBtn");
-const rearBtn = document.getElementById("rearBtn");
-const cameraControls = document.getElementById("cameraControls");
-const cameraStatus = document.getElementById("cameraStatus");
-const intro = document.getElementById("intro");
-const viewer = document.getElementById("viewer");
-const results = document.getElementById("results");
-const instructions = document.getElementById("instructions");
-const liveState = document.getElementById("liveState");
-const odEl = document.getElementById("od");
-const oeEl = document.getElementById("oe");
-const dnpEl = document.getElementById("dnp");
-const statusDot = document.getElementById("statusDot");
+
+const startBtn = $("startBtn");
+const frontBtn = $("frontBtn");
+const rearBtn = $("rearBtn");
+const statusDot = $("statusDot");
+const workspace = $("workspace");
+const intro = $("intro");
+const viewer = $("viewer");
+const calibrationOverlay = $("calibrationOverlay");
+const calibrationPanel = $("calibrationPanel");
+const measurementPanel = $("measurementPanel");
+const osPanel = $("osPanel");
+const savedPanel = $("savedPanel");
+const settingsPanel = $("settingsPanel");
+
+const handleA = $("handleA");
+const handleB = $("handleB");
+const calibrationLine = document.querySelector(".calibration-line");
+const referenceMmEl = $("referenceMm");
+const scaleValue = $("scaleValue");
+const calibrationState = $("calibrationState");
+const calibrationValidation = $("calibrationValidation");
+
+const measurementState = $("measurementState");
+const faceState = $("faceState");
+const stabilityState = $("stabilityState");
+const alignmentState = $("alignmentState");
+const readingCount = $("readingCount");
+const readingNote = $("readingNote");
+const odEl = $("od");
+const oeEl = $("oe");
+const dnpEl = $("dnp");
+const useReadingBtn = $("useReadingBtn");
+
+const customerName = $("customerName");
+const customerPhone = $("customerPhone");
+const customerCpf = $("customerCpf");
+const saleNumber = $("saleNumber");
+const customerType = $("customerType");
+const customerNotes = $("customerNotes");
+const osNumber = $("osNumber");
+const osDnp = $("osDnp");
+const osMono = $("osMono");
+const osValidation = $("osValidation");
 
 let stream = null;
 let running = false;
 let cameraFacing = "user";
-let last = null;
-let smoothLeft = null;
-let smoothRight = null;
+let animationFrame = null;
 
-// Leitura estável: acumulamos vários frames antes de apresentar o resultado.
-let measurementSamples = [];
+let calibration = null;
+let calibrationPoints = { a: {x:0,y:0}, b: {x:0,y:0} };
+let dragHandle = null;
+
+let samples = [];
 let stableReading = null;
-const STABLE_FRAMES = 18;
+const STABLE_FRAMES = 24;
 
-// Escala provisória baseada no diâmetro anatômico médio da íris.
-// Será substituída por calibração física na próxima etapa.
-const ASSUMED_IRIS_DIAMETER_MM = 11.8;
+let currentOs = null;
+let savedRecord = null;
 
-const LEFT_IRIS_CENTER = 473;
-const RIGHT_IRIS_CENTER = 468;
-const LEFT_EYE_CORNERS = [362, 263];
-const RIGHT_EYE_CORNERS = [33, 133];
-
-// Referência central do nariz/násion para separar a DNP monocular.
-// Nesta fase o resultado é exibido em pixels; a calibração para mm virá depois.
-const NASION = 168;
-
-function point(landmarks, id) {
-  const p = landmarks[id];
-  return p ? { x: p.x, y: p.y } : null;
-}
-
-function averagePoint(landmarks, ids) {
-  const pts = ids.map(i => point(landmarks, i)).filter(Boolean);
-  if (!pts.length) return null;
-  const sum = pts.reduce((a, p) => ({ x: a.x + p.x, y: a.y + p.y }), {x:0,y:0});
-  return { x: sum.x / pts.length, y: sum.y / pts.length };
-}
-
-function distance(a,b) {
-  return Math.hypot(a.x-b.x, a.y-b.y);
-}
-
-function smooth(current, previous, factor = 0.35) {
-  if (!previous) return current;
-  return {
-    x: previous.x + (current.x - previous.x) * factor,
-    y: previous.y + (current.y - previous.y) * factor
-  };
-}
-
-function getViewSize() {
-  const rect = viewer.getBoundingClientRect();
-  return {
-    width: Math.max(1, rect.width),
-    height: Math.max(1, rect.height)
-  };
-}
-
-// MediaPipe entrega coordenadas relativas ao quadro original da câmera.
-// Como o vídeo usa object-fit: cover, parte das laterais é recortada.
-// Esta função converte corretamente a coordenada da câmera para a área visível.
-function toViewPoint(p) {
-  const sourceW = video.videoWidth || 1280;
-  const sourceH = video.videoHeight || 720;
-  const { width, height } = getViewSize();
-
-  const scale = Math.max(width / sourceW, height / sourceH);
-  const renderedW = sourceW * scale;
-  const renderedH = sourceH * scale;
-  const cropX = (renderedW - width) / 2;
-  const cropY = (renderedH - height) / 2;
-
-  return {
-    x: p.x * renderedW - cropX,
-    y: p.y * renderedH - cropY
-  };
-}
-
-// Diagnóstico: usamos o landmark CENTRAL da íris fornecido pelo MediaPipe.
-// 468 = centro da íris do olho direito.
-// 473 = centro da íris do olho esquerdo.
-// Os demais landmarks do anel servem apenas para desenhar a geometria da íris.
-const LEFT_IRIS_CENTER_ID = 473;
 const RIGHT_IRIS_CENTER_ID = 468;
-const LEFT_IRIS_RING_IDS = [474, 475, 476, 477];
-const RIGHT_IRIS_RING_IDS = [469, 470, 471, 472];
+const LEFT_IRIS_CENTER_ID = 473;
+const RIGHT_IRIS_RING_IDS = [469,470,471,472];
+const LEFT_IRIS_RING_IDS = [474,475,476,477];
+const RIGHT_EYE_CONTOUR = [33,7,163,144,145,153,154,155,133];
+const LEFT_EYE_CONTOUR = [362,382,381,380,374,373,390,249,263];
 
-// Contornos aproximados das pálpebras para conferência visual.
-const RIGHT_EYE_CONTOUR = [33, 7, 163, 144, 145, 153, 154, 155, 133];
-const LEFT_EYE_CONTOUR = [362, 382, 381, 380, 374, 373, 390, 249, 263];
-
-function drawPoint(p, color) {
-  ctx.beginPath();
-  ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
-  ctx.fillStyle = color;
-  ctx.fill();
-
-  ctx.beginPath();
-  ctx.arc(p.x, p.y, 11, 0, Math.PI * 2);
-  ctx.strokeStyle = "#ffffff";
-  ctx.lineWidth = 2;
-  ctx.stroke();
+function point(lm,id){
+  const p=lm[id];
+  return p ? {x:p.x,y:p.y} : null;
 }
-
-function drawIris(landmarks, centerId, ringIds) {
-  const centerRaw = point(landmarks, centerId);
-  const ringRaw = ringIds.map(id => point(landmarks, id)).filter(Boolean);
-  if (!centerRaw || ringRaw.length < 3) return null;
-
-  const center = toViewPoint(centerRaw);
-  const ring = ringRaw.map(toViewPoint);
-
-  const radius = ring.reduce((sum, p) => sum + distance(center, p), 0) / ring.length;
-
-  ctx.beginPath();
-  ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
-  ctx.strokeStyle = "rgba(85,214,255,.95)";
-  ctx.lineWidth = 2;
-  ctx.stroke();
-
-  // Pequena cruz no centro exato do landmark 468/473.
-  ctx.beginPath();
-  ctx.moveTo(center.x - 9, center.y);
-  ctx.lineTo(center.x + 9, center.y);
-  ctx.moveTo(center.x, center.y - 9);
-  ctx.lineTo(center.x, center.y + 9);
-  ctx.strokeStyle = "#ffffff";
-  ctx.lineWidth = 2;
-  ctx.stroke();
-
-  drawPoint(center, "#55d6ff");
-  return center;
+function distance(a,b){ return Math.hypot(a.x-b.x,a.y-b.y); }
+function median(values){
+  if(!values.length)return 0;
+  const s=[...values].sort((a,b)=>a-b);
+  const m=Math.floor(s.length/2);
+  return s.length%2?s[m]:(s[m-1]+s[m])/2;
 }
-
-function drawEyeContour(landmarks, ids) {
-  const pts = ids.map(id => point(landmarks, id)).filter(Boolean).map(toViewPoint);
-  if (pts.length < 2) return;
-
-  ctx.beginPath();
-  ctx.moveTo(pts[0].x, pts[0].y);
-  for (let i = 1; i < pts.length; i++) {
-    ctx.lineTo(pts[i].x, pts[i].y);
-  }
-  ctx.strokeStyle = "rgba(255,255,255,.65)";
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
+function mean(values){ return values.length ? values.reduce((a,b)=>a+b,0)/values.length : 0; }
+function std(values){
+  if(values.length<2)return 0;
+  const m=mean(values);
+  return Math.sqrt(mean(values.map(v=>(v-m)**2)));
 }
-
-function drawNasion(p) {
-  ctx.beginPath();
-  ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
-  ctx.fillStyle = "#ffffff";
-  ctx.fill();
-  ctx.strokeStyle = "#ffcc66";
-  ctx.lineWidth = 2;
-  ctx.stroke();
+function getViewSize(){
+  const r=viewer.getBoundingClientRect();
+  return {width:Math.max(1,r.width),height:Math.max(1,r.height)};
 }
-
-function drawLabel(text, p, offsetX = 8, offsetY = -10) {
-  ctx.font = "bold 11px system-ui, sans-serif";
-  ctx.fillStyle = "rgba(255,255,255,.95)";
-  ctx.strokeStyle = "rgba(0,0,0,.65)";
-  ctx.lineWidth = 3;
-  ctx.strokeText(text, p.x + offsetX, p.y + offsetY);
-  ctx.fillText(text, p.x + offsetX, p.y + offsetY);
+function toViewPoint(p){
+  const sourceW=video.videoWidth||1280;
+  const sourceH=video.videoHeight||720;
+  const size=getViewSize();
+  const scale=Math.max(size.width/sourceW,size.height/sourceH);
+  const renderedW=sourceW*scale;
+  const renderedH=sourceH*scale;
+  const cropX=(renderedW-size.width)/2;
+  const cropY=(renderedH-size.height)/2;
+  return {x:p.x*renderedW-cropX,y:p.y*renderedH-cropY};
 }
-
-function drawLine(a,b, color = "#4db2ff", width = 2) {
-  ctx.beginPath();
-  ctx.moveTo(a.x, a.y);
-  ctx.lineTo(b.x, b.y);
-  ctx.strokeStyle = color;
-  ctx.lineWidth = width;
-  ctx.stroke();
+function setStep(n){
+  document.querySelectorAll(".step").forEach(el=>{
+    const s=Number(el.dataset.step);
+    el.classList.toggle("active",s===n);
+    el.classList.toggle("done",s<n);
+  });
 }
-
-function drawAdaptiveRuler(landmarks, left, right) {
-  const leftCornersRaw = averagePoint(landmarks, LEFT_EYE_CORNERS);
-  const rightCornersRaw = averagePoint(landmarks, RIGHT_EYE_CORNERS);
-  if (!leftCornersRaw || !rightCornersRaw) return;
-
-  const leftCorners = toViewPoint(leftCornersRaw);
-  const rightCorners = toViewPoint(rightCornersRaw);
-
-  const y = (left.y + right.y) / 2;
-  const eyeSpan = distance(leftCorners, rightCorners);
-  const extension = eyeSpan * 0.16;
-
-  const start = { x: Math.max(0, rightCorners.x - extension), y };
-  const end = { x: Math.min(canvas.width, leftCorners.x + extension), y };
-
-  ctx.save();
-  ctx.setLineDash([10, 8]);
-  ctx.beginPath();
-  ctx.moveTo(start.x, start.y);
-  ctx.lineTo(end.x, end.y);
-  ctx.strokeStyle = "rgba(255,255,255,.75)";
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  ctx.restore();
-
-  for (const p of [start, end]) {
-    ctx.beginPath();
-    ctx.moveTo(p.x, p.y - 12);
-    ctx.lineTo(p.x, p.y + 12);
-    ctx.strokeStyle = "rgba(255,255,255,.9)";
-    ctx.lineWidth = 2;
-    ctx.stroke();
-  }
+function resetCalibrationHandles(){
+  const size=getViewSize();
+  calibrationPoints.a={x:size.width*.22,y:size.height*.5};
+  calibrationPoints.b={x:size.width*.78,y:size.height*.5};
+  renderCalibrationHandles();
 }
-
-
-function median(values) {
-  if (!values.length) return 0;
-  const sorted = [...values].sort((a,b) => a-b);
-  const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+function renderCalibrationHandles(){
+  const a=calibrationPoints.a,b=calibrationPoints.b;
+  handleA.style.left=(a.x-14)+"px";
+  handleA.style.top=(a.y-14)+"px";
+  handleB.style.left=(b.x-14)+"px";
+  handleB.style.top=(b.y-14)+"px";
+  calibrationLine.style.left=Math.min(a.x,b.x)+"px";
+  calibrationLine.style.width=Math.abs(b.x-a.x)+"px";
+  calibrationLine.style.right="auto";
+  calibrationLine.style.top=((a.y+b.y)/2)+"px";
+  calibrationLine.style.transform="rotate("+Math.atan2(b.y-a.y,b.x-a.x)*180/Math.PI+"deg)";
+  calibrationLine.style.transformOrigin="left center";
+  const px=distance(a,b);
+  const mm=Number(referenceMmEl.value)||0;
+  scaleValue.textContent=mm>0&&px>0?(px.toFixed(0)+" px / "+mm.toFixed(1)+" mm"):"—";
 }
-
-function estimateIrisRadiusPx(landmarks, centerId, ringIds) {
-  const c = point(landmarks, centerId);
-  if (!c) return null;
-  const radii = ringIds
-    .map(id => point(landmarks, id))
-    .filter(Boolean)
-    .map(p => distance(c, p));
-  return radii.length ? median(radii) : null;
-}
-
-function getMeasurementReference(lm) {
-  // Para a DNP monocular precisamos de uma referência da linha média facial,
-  // e não do meio entre os cantos internos dos olhos.
-  // Usamos dois pontos da região nasal para reduzir o efeito de um único landmark.
-  const noseBridge = point(lm, 168);
-  const noseTip = point(lm, 1);
-
-  if (!noseBridge || !noseTip) return null;
-
-  // A referência é a linha média nasal, na altura média das pupilas.
-  // O eixo X vem da média dos pontos nasais; o eixo Y será ajustado pelo chamador.
+function pointerPosition(e){
+  const r=viewer.getBoundingClientRect();
   return {
-    x: (noseBridge.x + noseTip.x) / 2,
-    y: (noseBridge.y + noseTip.y) / 2
+    x:Math.max(12,Math.min(r.width-12,e.clientX-r.left)),
+    y:Math.max(12,Math.min(r.height-12,e.clientY-r.top))
   };
 }
+function startDrag(handle,e){
+  e.preventDefault();
+  dragHandle=handle;
+  handle==="a" ? handleA.setPointerCapture?.(e.pointerId) : handleB.setPointerCapture?.(e.pointerId);
+}
+function moveDrag(e){
+  if(!dragHandle)return;
+  const p=pointerPosition(e);
+  calibrationPoints[dragHandle]=p;
+  renderCalibrationHandles();
+}
+function endDrag(){ dragHandle=null; }
 
-function addMeasurementSample(lm) {
-  const right = point(lm, RIGHT_IRIS_CENTER_ID);
-  const left = point(lm, LEFT_IRIS_CENTER_ID);
-  const ref = getMeasurementReference(lm);
+handleA.addEventListener("pointerdown",e=>startDrag("a",e));
+handleB.addEventListener("pointerdown",e=>startDrag("b",e));
+window.addEventListener("pointermove",moveDrag);
+window.addEventListener("pointerup",endDrag);
+window.addEventListener("resize",()=>{if(!workspace.classList.contains("hidden"))renderCalibrationHandles()});
+referenceMmEl.addEventListener("input",renderCalibrationHandles);
 
-  if (!right || !left || !ref) return;
+$("repositionBtn").addEventListener("click",()=>{
+  resetCalibrationHandles();
+  calibrationValidation.textContent="Pontos reiniciados. Alinhe-os às extremidades da referência.";
+  calibrationValidation.className="validation";
+});
 
-  // Para DNP, a medida é horizontal até a linha média facial.
-  ref.y = (right.y + left.y) / 2;
+function setCalibrationFromHandles(){
+  const mm=Number(referenceMmEl.value);
+  const px=distance(calibrationPoints.a,calibrationPoints.b);
 
-  const irisRight = estimateIrisRadiusPx(lm, RIGHT_IRIS_CENTER_ID, RIGHT_IRIS_RING_IDS);
-  const irisLeft = estimateIrisRadiusPx(lm, LEFT_IRIS_CENTER_ID, LEFT_IRIS_RING_IDS);
-  if (!irisRight || !irisLeft) return;
-
-  const irisDiameterPx = median([irisRight * 2, irisLeft * 2]);
-
-  // Distâncias na imagem original, antes da conversão visual.
-  const odPx = Math.abs(right.x - ref.x);
-  const oePx = Math.abs(left.x - ref.x);
-
-  measurementSamples.push({ odPx, oePx, irisDiameterPx });
-
-  if (measurementSamples.length > STABLE_FRAMES) {
-    measurementSamples.shift();
+  if(!Number.isFinite(mm)||mm<10||mm>300){
+    calibrationValidation.textContent="Informe uma dimensão física válida entre 10 e 300 mm.";
+    calibrationValidation.className="validation error";
+    return false;
+  }
+  if(px<80){
+    calibrationValidation.textContent="A distância entre os pontos está pequena. Posicione os marcadores nas extremidades da referência.";
+    calibrationValidation.className="validation warn";
+    return false;
   }
 
-  if (measurementSamples.length < STABLE_FRAMES) {
-    const progress = Math.round((measurementSamples.length / STABLE_FRAMES) * 100);
-    liveState.textContent = `Estabilizando leitura… ${progress}%`;
+  const pxPerMm=px/mm;
+  calibration={
+    pxPerMm:pxPerMm,
+    referenceMm:mm,
+    timestamp:new Date().toISOString(),
+    cameraFacing:cameraFacing,
+    viewport:getViewSize()
+  };
+
+  localStorage.setItem("mbDnpCalibration",JSON.stringify(calibration));
+  localStorage.setItem("mbDnpCalibrationLabel",new Date().toLocaleString("pt-BR"));
+  calibrationState.textContent="Calibrado";
+  calibrationState.className="pill green";
+  calibrationValidation.textContent="Calibração registrada: "+pxPerMm.toFixed(2)+" px/mm. Mantenha a câmera e a distância estáveis.";
+  calibrationValidation.className="validation ok";
+  scaleValue.textContent=pxPerMm.toFixed(2)+" px/mm";
+
+  measurementPanel.classList.remove("hidden");
+  calibrationOverlay.classList.add("hidden");
+  setStep(3);
+  resetSamples();
+  return true;
+}
+$("confirmCalibrationBtn").addEventListener("click",setCalibrationFromHandles);
+
+function loadLocalCalibration(){
+  try{
+    const saved=JSON.parse(localStorage.getItem("mbDnpCalibration")||"null");
+    if(saved && saved.pxPerMm && saved.cameraFacing===cameraFacing){
+      calibration=saved;
+      calibrationState.textContent="Calibrado";
+      calibrationState.className="pill green";
+      calibrationValidation.textContent="Última calibração local: "+Number(saved.pxPerMm).toFixed(2)+" px/mm.";
+      calibrationValidation.className="validation ok";
+      scaleValue.textContent=Number(saved.pxPerMm).toFixed(2)+" px/mm";
+    }
+  }catch(e){console.warn(e);}
+}
+function invalidateCalibration(reason){
+  calibration=null;
+  calibrationState.textContent="Não calibrado";
+  calibrationState.className="pill amber";
+  calibrationValidation.textContent=reason||"Faça uma nova calibração.";
+  calibrationValidation.className="validation warn";
+  scaleValue.textContent="—";
+  measurementPanel.classList.add("hidden");
+  calibrationOverlay.classList.remove("hidden");
+  setStep(2);
+  resetSamples();
+  resetCalibrationHandles();
+}
+
+function drawPoint(p,color){
+  ctx.beginPath();ctx.arc(p.x,p.y,5,0,Math.PI*2);ctx.fillStyle=color||"#55d6ff";ctx.fill();
+  ctx.beginPath();ctx.arc(p.x,p.y,11,0,Math.PI*2);ctx.strokeStyle="#fff";ctx.lineWidth=2;ctx.stroke();
+}
+function drawIris(lm,centerId,ringIds){
+  const cRaw=point(lm,centerId);
+  const ring=ringIds.map(id=>point(lm,id)).filter(Boolean);
+  if(!cRaw||ring.length<3)return null;
+  const c=toViewPoint(cRaw);
+  const ringView=ring.map(toViewPoint);
+  const r=median(ringView.map(p=>distance(c,p)));
+  ctx.beginPath();ctx.arc(c.x,c.y,r,0,Math.PI*2);
+  ctx.strokeStyle="rgba(85,214,255,.95)";ctx.lineWidth=2;ctx.stroke();
+  ctx.beginPath();ctx.moveTo(c.x-9,c.y);ctx.lineTo(c.x+9,c.y);ctx.moveTo(c.x,c.y-9);ctx.lineTo(c.x,c.y+9);
+  ctx.strokeStyle="#fff";ctx.lineWidth=2;ctx.stroke();
+  drawPoint(c,"#55d6ff");
+  return c;
+}
+function drawContour(lm,ids){
+  const pts=ids.map(id=>point(lm,id)).filter(Boolean).map(toViewPoint);
+  if(pts.length<2)return;
+  ctx.beginPath();ctx.moveTo(pts[0].x,pts[0].y);
+  pts.slice(1).forEach(p=>ctx.lineTo(p.x,p.y));
+  ctx.strokeStyle="rgba(255,255,255,.55)";ctx.lineWidth=1.2;ctx.stroke();
+}
+function drawLabel(text,p){
+  ctx.font="800 11px system-ui,sans-serif";
+  ctx.fillStyle="#fff";ctx.strokeStyle="rgba(0,0,0,.72)";ctx.lineWidth=3;
+  ctx.strokeText(text,p.x+9,p.y-10);ctx.fillText(text,p.x+9,p.y-10);
+}
+function getFacialReference(lm,right,left){
+  const bridge=point(lm,168);
+  const nose=point(lm,1);
+  if(!bridge||!nose)return null;
+  return {x:(bridge.x+nose.x)/2,y:(right.y+left.y)/2};
+}
+function alignmentInfo(right,left){
+  const dy=left.y-right.y;
+  const dx=Math.max(.001,Math.abs(left.x-right.x));
+  const roll=Math.atan2(dy,dx)*180/Math.PI;
+  return {roll:roll,good:Math.abs(roll)<=5.5};
+}
+function addSample(lm,right,left,ref){
+  if(!calibration)return;
+  const rv=toViewPoint(right);
+  const lv=toViewPoint(left);
+  const refv=toViewPoint(ref);
+  const odMm=Math.abs(rv.x-refv.x)/calibration.pxPerMm;
+  const oeMm=Math.abs(lv.x-refv.x)/calibration.pxPerMm;
+  const dnpMm=odMm+oeMm;
+  if(![odMm,oeMm,dnpMm].every(Number.isFinite))return;
+
+  samples.push({odMm:odMm,oeMm:oeMm,dnpMm:dnpMm});
+  if(samples.length>STABLE_FRAMES)samples.shift();
+  readingCount.textContent=samples.length+"/"+STABLE_FRAMES+" frames";
+
+  if(samples.length<STABLE_FRAMES){
+    const pct=Math.round(samples.length/STABLE_FRAMES*100);
+    measurementState.textContent="Estabilizando";
+    measurementState.className="pill";
+    stabilityState.textContent=pct+"%";
+    readingNote.textContent="Mantenha o rosto imóvel";
+    useReadingBtn.disabled=true;
     return;
   }
 
-  const odMedian = median(measurementSamples.map(s => s.odPx));
-  const oeMedian = median(measurementSamples.map(s => s.oePx));
-  const irisMedian = median(measurementSamples.map(s => s.irisDiameterPx));
+  const od=median(samples.map(s=>s.odMm));
+  const oe=median(samples.map(s=>s.oeMm));
+  const dnp=od+oe;
+  const stability=Math.max(std(samples.map(s=>s.odMm)),std(samples.map(s=>s.oeMm)));
 
-  const pxPerMm = irisMedian / ASSUMED_IRIS_DIAMETER_MM;
-
-  stableReading = {
-    odMm: odMedian / pxPerMm,
-    oeMm: oeMedian / pxPerMm,
-    dnpMm: (odMedian + oeMedian) / pxPerMm,
-    irisDiameterPx: irisMedian,
-    pxPerMm
+  stableReading={
+    odMm:od,oeMm:oe,dnpMm:dnp,sdMm:stability,
+    timestamp:new Date().toISOString(),
+    calibration:Object.assign({},calibration)
   };
 
-  odEl.textContent = stableReading.odMm.toFixed(1) + " mm";
-  oeEl.textContent = stableReading.oeMm.toFixed(1) + " mm";
-  dnpEl.textContent = stableReading.dnpMm.toFixed(1) + " mm";
-  liveState.textContent = "Leitura estabilizada";
+  odEl.textContent=od.toFixed(1)+" mm";
+  oeEl.textContent=oe.toFixed(1)+" mm";
+  dnpEl.textContent=dnp.toFixed(1)+" mm";
+
+  const stable=stability<=.65;
+  const acceptable=stability<=1.25;
+  stabilityState.textContent=stable?"Excelente":acceptable?"Boa":"Instável";
+  alignmentState.textContent="Alinhado";
+  measurementState.textContent=stable?"Leitura pronta":"Leitura estável";
+  measurementState.className=stable?"pill green":"pill";
+  readingNote.textContent=stable?"Variação baixa entre os frames":"Repita se desejar maior estabilidade";
+  useReadingBtn.disabled=!acceptable;
 }
-
-function onResults(res) {
-  const { width, height } = getViewSize();
-  if (canvas.width !== Math.round(width) || canvas.height !== Math.round(height)) {
-    canvas.width = Math.round(width);
-    canvas.height = Math.round(height);
+function onResults(res){
+  const size=getViewSize();
+  if(canvas.width!==Math.round(size.width)||canvas.height!==Math.round(size.height)){
+    canvas.width=Math.round(size.width);canvas.height=Math.round(size.height);
   }
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0,0,canvas.width,canvas.height);
 
-  if (!res.multiFaceLandmarks || !res.multiFaceLandmarks.length) {
-    liveState.textContent = "Rosto não detectado";
+  if(!res.multiFaceLandmarks||!res.multiFaceLandmarks.length){
+    faceState.textContent="Não detectado";
+    alignmentState.textContent="—";
     statusDot.classList.remove("active");
+    measurementState.textContent=calibration?"Aguardando":"Calibre primeiro";
+    readingNote.textContent="Centralize o rosto dentro da área";
     return;
   }
 
-  const lm = res.multiFaceLandmarks[0];
-
-  // Contornos para orientação visual.
-  drawEyeContour(lm, RIGHT_EYE_CONTOUR);
-  drawEyeContour(lm, LEFT_EYE_CONTOUR);
-
-  const rightView = drawIris(lm, RIGHT_IRIS_CENTER_ID, RIGHT_IRIS_RING_IDS);
-  const leftView = drawIris(lm, LEFT_IRIS_CENTER_ID, LEFT_IRIS_RING_IDS);
-
-  if (!rightView || !leftView) {
-    liveState.textContent = "Olhos não detectados";
+  const lm=res.multiFaceLandmarks[0];
+  const right=point(lm,RIGHT_IRIS_CENTER_ID);
+  const left=point(lm,LEFT_IRIS_CENTER_ID);
+  if(!right||!left){
+    faceState.textContent="Olhos não detectados";
     return;
   }
 
-  const refRaw = getMeasurementReference(lm);
-  if (!refRaw) {
-    liveState.textContent = "Referência facial não detectada";
-    return;
+  drawContour(lm,RIGHT_EYE_CONTOUR);
+  drawContour(lm,LEFT_EYE_CONTOUR);
+  const rightView=drawIris(lm,RIGHT_IRIS_CENTER_ID,RIGHT_IRIS_RING_IDS);
+  const leftView=drawIris(lm,LEFT_IRIS_CENTER_ID,LEFT_IRIS_RING_IDS);
+  if(!rightView||!leftView)return;
+
+  const align=alignmentInfo(right,left);
+  const ref=getFacialReference(lm,right,left);
+  if(!ref)return;
+  const refView=toViewPoint(ref);
+
+  ctx.beginPath();ctx.moveTo(refView.x,refView.y-15);ctx.lineTo(refView.x,refView.y+15);
+  ctx.strokeStyle="rgba(255,204,102,.95)";ctx.lineWidth=2;ctx.stroke();
+  drawLabel("OD",rightView);drawLabel("OE",leftView);
+
+  if(calibration){
+    ctx.beginPath();ctx.moveTo(rightView.x,rightView.y);ctx.lineTo(refView.x,refView.y);ctx.lineTo(leftView.x,leftView.y);
+    ctx.strokeStyle="rgba(85,214,255,.58)";ctx.lineWidth=1.5;ctx.stroke();
   }
 
-  const refView = toViewPoint(refRaw);
-
-  // Referência visual entre os cantos internos dos olhos.
-  ctx.beginPath();
-  ctx.moveTo(refView.x, refView.y - 14);
-  ctx.lineTo(refView.x, refView.y + 14);
-  ctx.strokeStyle = "rgba(255,204,102,.95)";
-  ctx.lineWidth = 2;
-  ctx.stroke();
-
-  drawLabel("OD", rightView, 10, -10);
-  drawLabel("OE", leftView, 10, -10);
-
-  // Linhas provisórias para tornar a origem de OD/OE compreensível.
-  drawLine(rightView, refView, "rgba(85,214,255,.65)", 1.5);
-  drawLine(refView, leftView, "rgba(85,214,255,.65)", 1.5);
-
-  addMeasurementSample(lm);
-
+  faceState.textContent="Detectado";
+  alignmentState.textContent=align.good?"Alinhado":"Ajustar ("+align.roll.toFixed(1)+"°)";
   statusDot.classList.add("active");
+
+  if(calibration&&align.good){
+    addSample(lm,right,left,ref);
+  }else if(!calibration){
+    measurementState.textContent="Calibre primeiro";
+    readingNote.textContent="Conclua a calibração física";
+  }else{
+    measurementState.textContent="Ajuste a cabeça";
+    readingNote.textContent="Mantenha os olhos no mesmo nível";
+  }
 }
 
-const faceMesh = new FaceMesh({
-  locateFile: file => "https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/" + file
+const faceMesh=new FaceMesh({
+  locateFile:file=>"https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/"+file
 });
-
 faceMesh.setOptions({
-  maxNumFaces: 1,
-  refineLandmarks: true,
-  minDetectionConfidence: 0.6,
-  minTrackingConfidence: 0.6
+  maxNumFaces:1,
+  refineLandmarks:true,
+  minDetectionConfidence:.6,
+  minTrackingConfidence:.6
 });
-
 faceMesh.onResults(onResults);
 
-async function openCamera() {
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    throw new Error("Este navegador não disponibiliza acesso à câmera.");
-  }
-
+async function openCamera(){
   stopCamera();
-
-  const constraints = {
-    audio: false,
-    video: {
-      facingMode: { ideal: cameraFacing },
-      width: { ideal: 1280 },
-      height: { ideal: 720 }
-    }
+  const constraints={
+    audio:false,
+    video:{facingMode:{ideal:cameraFacing},width:{ideal:1280},height:{ideal:720}}
   };
-
-  try {
-    stream = await navigator.mediaDevices.getUserMedia(constraints);
-  } catch (err) {
-    // Alguns aparelhos não aceitam facingMode ideal; tenta uma configuração simples.
-    stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
+  try{
+    stream=await navigator.mediaDevices.getUserMedia(constraints);
+  }catch(e){
+    stream=await navigator.mediaDevices.getUserMedia({audio:false,video:true});
   }
-
-  video.srcObject = stream;
+  video.srcObject=stream;
   await video.play();
-
-  cameraStatus.textContent =
-    cameraFacing === "user" ? "Câmera frontal selecionada" : "Câmera traseira selecionada";
-
+  $("cameraTitle").textContent=cameraFacing==="user"?"Frontal":"Traseira";
+  $("cameraStatus").textContent=cameraFacing==="user"?"Câmera frontal selecionada":"Câmera traseira selecionada";
+  $("cameraQuality").textContent="Ativa";
   statusDot.classList.add("active");
 }
-
-function stopCamera() {
-  if (stream) {
-    stream.getTracks().forEach(track => track.stop());
-    stream = null;
-  }
-  video.srcObject = null;
+function stopCamera(){
+  if(stream)stream.getTracks().forEach(t=>t.stop());
+  stream=null;
+  if(animationFrame)cancelAnimationFrame(animationFrame);
+  animationFrame=null;
 }
-
-async function processFrame() {
-  if (!running) return;
-  if (video.readyState >= 2) {
-    try {
-      await faceMesh.send({ image: video });
-    } catch (err) {
-      console.error("Erro no processamento da câmera:", err);
-    }
+async function processFrame(){
+  if(!running)return;
+  if(video.readyState>=2){
+    try{await faceMesh.send({image:video});}catch(e){console.error(e);}
   }
-  requestAnimationFrame(processFrame);
+  animationFrame=requestAnimationFrame(processFrame);
 }
-
-async function selectCamera(facing) {
-  cameraFacing = facing;
-  frontBtn.classList.toggle("active", facing === "user");
-  rearBtn.classList.toggle("active", facing === "environment");
-
-  if (!stream) {
-    cameraStatus.textContent =
-      facing === "user" ? "Câmera frontal selecionada" : "Câmera traseira selecionada";
-    return;
-  }
-
-  liveState.textContent = "Trocando câmera…";
-
-  try {
+async function selectCamera(facing){
+  cameraFacing=facing;
+  frontBtn.classList.toggle("active",facing==="user");
+  rearBtn.classList.toggle("active",facing==="environment");
+  if(!stream)return;
+  try{
     await openCamera();
-    liveState.textContent = "Câmera ativa — centralize o rosto";
-  } catch (err) {
-    console.error(err);
-    liveState.textContent = "Não foi possível abrir esta câmera.";
-    alert("Não foi possível acessar a câmera selecionada. Verifique as permissões do navegador.");
+    invalidateCalibration("A câmera foi alterada. Faça uma nova calibração para esta câmera.");
+  }catch(e){
+    console.error(e);
+    $("cameraQuality").textContent="Erro";
+    alert("Não foi possível acessar a câmera selecionada.");
   }
 }
-
-async function start() {
-  try {
-    intro.classList.add("hidden");
-    viewer.classList.remove("hidden");
-    results.classList.remove("hidden");
-    instructions.classList.remove("hidden");
-    cameraControls.classList.remove("hidden");
-
+function resetSamples(){
+  samples=[];stableReading=null;
+  odEl.textContent="—";oeEl.textContent="—";dnpEl.textContent="—";
+  readingCount.textContent="0/"+STABLE_FRAMES+" frames";
+  readingNote.textContent=calibration?"Aguardando rosto":"Calibre primeiro";
+  stabilityState.textContent="—";faceState.textContent="—";alignmentState.textContent="—";
+  measurementState.textContent=calibration?"Aguardando":"Aguardando";
+  measurementState.className="pill";
+  useReadingBtn.disabled=true;
+}
+async function start(){
+  intro.classList.add("hidden");
+  workspace.classList.remove("hidden");
+  savedPanel.classList.add("hidden");
+  settingsPanel.classList.add("hidden");
+  try{
     await openCamera();
-
-    running = true;
+    running=true;
     processFrame();
-    liveState.textContent = "Câmera ativa — centralize o rosto";
-  } catch (err) {
-    console.error(err);
-    running = false;
-    liveState.textContent = "Não foi possível acessar a câmera.";
-    alert("Permita o acesso à câmera no navegador. Se já permitiu, recarregue a página e tente novamente.");
+    calibrationOverlay.classList.remove("hidden");
+    measurementPanel.classList.add("hidden");
+    setStep(2);
+    resetCalibrationHandles();
+    loadLocalCalibration();
+    if(calibration){
+      calibrationOverlay.classList.add("hidden");
+      measurementPanel.classList.remove("hidden");
+      setStep(3);
+    }
+  }catch(e){
+    console.error(e);
+    alert("Permita o acesso à câmera no navegador e tente novamente.");
+    resetApp();
   }
 }
-
-function reset() {
-  running = false;
-  stopCamera();
-  canvas.width = 1;
-  canvas.height = 1;
-  ctx.clearRect(0,0,1,1);
-  results.classList.add("hidden");
-  viewer.classList.add("hidden");
-  cameraControls.classList.add("hidden");
-  instructions.classList.add("hidden");
-  intro.classList.remove("hidden");
-  statusDot.classList.remove("active");
-  last = null;
-  smoothLeft = null;
-  smoothRight = null;
-  measurementSamples = [];
-  stableReading = null;
+function resetApp(){
+  running=false;stopCamera();
+  workspace.classList.add("hidden");intro.classList.remove("hidden");
+  calibrationOverlay.classList.add("hidden");measurementPanel.classList.add("hidden");
+  osPanel.classList.add("hidden");savedPanel.classList.add("hidden");
+  setStep(1);statusDot.classList.remove("active");calibration=null;resetSamples();
 }
+function prepareOs(){
+  if(!stableReading)return;
+  osDnp.textContent=stableReading.dnpMm.toFixed(1)+" mm";
+  osMono.textContent=stableReading.odMm.toFixed(1)+" / "+stableReading.oeMm.toFixed(1)+" mm";
+  setStep(4);osPanel.classList.remove("hidden");
+  osPanel.scrollIntoView({behavior:"smooth",block:"start"});
+}
+useReadingBtn.addEventListener("click",prepareOs);
+$("newReadingBtn").addEventListener("click",()=>{resetSamples();setStep(3);});
+startBtn.addEventListener("click",start);
+frontBtn.addEventListener("click",()=>selectCamera("user"));
+rearBtn.addEventListener("click",()=>selectCamera("environment"));
 
-frontBtn.addEventListener("click", () => selectCamera("user"));
-rearBtn.addEventListener("click", () => selectCamera("environment"));
-startBtn.addEventListener("click", start);
-resetBtn.addEventListener("click", reset);
+function nextOsNumber(){
+  const day=new Date().toISOString().slice(0,10).replaceAll("-","");
+  const key="mbDnpOsCounter_"+day;
+  const n=Number(localStorage.getItem(key)||0)+1;
+  localStorage.setItem(key,String(n));
+  return "DNP-"+day+"-"+String(n).padStart(3,"0");
+}
+function collectRecord(){
+  if(!stableReading)return null;
+  const name=customerName.value.trim();
+  if(!name){
+    osValidation.textContent="Informe o nome do cliente para gerar a O.S.";
+    osValidation.className="validation error";
+    customerName.focus();
+    return null;
+  }
+  const number=currentOs&&currentOs.number?currentOs.number:nextOsNumber();
+  currentOs={number:number};
+  return {
+    schema:"MB.Optica.DNP.OS.v1",
+    number:number,
+    createdAt:new Date().toISOString(),
+    customer:{
+      name:name,
+      phone:customerPhone.value.trim(),
+      cpf:customerCpf.value.trim(),
+      type:customerType.value,
+      notes:customerNotes.value.trim()
+    },
+    sale:{number:saleNumber.value.trim()},
+    measurement:{
+      odMm:stableReading.odMm,
+      oeMm:stableReading.oeMm,
+      dnpMm:stableReading.dnpMm,
+      stabilitySdMm:stableReading.sdMm
+    },
+    calibration:stableReading.calibration,
+    source:"MB.Óptica DNP",
+    integrationStatus:"pending"
+  };
+}
+function saveRecord(){
+  const record=collectRecord();
+  if(!record)return;
+  const list=JSON.parse(localStorage.getItem("mbDnpOrders")||"[]");
+  const existing=list.findIndex(x=>x.number===record.number);
+  if(existing>=0)list[existing]=record;else list.unshift(record);
+  localStorage.setItem("mbDnpOrders",JSON.stringify(list));
+  savedRecord=record;
+  osNumber.textContent=record.number;
+  osValidation.textContent="O.S. salva neste dispositivo.";
+  osValidation.className="validation ok";
+  savedPanel.classList.remove("hidden");
+  $("savedTitle").textContent="O.S. "+record.number+" criada";
+  $("savedSummary").textContent=record.customer.name+" • DNP "+record.measurement.dnpMm.toFixed(1)+" mm • OD "+record.measurement.odMm.toFixed(1)+" mm • OE "+record.measurement.oeMm.toFixed(1)+" mm.";
+  updateLocalStats();
+  savedPanel.scrollIntoView({behavior:"smooth",block:"start"});
+}
+$("generateOsBtn").addEventListener("click",saveRecord);
+$("saveDraftBtn").addEventListener("click",()=>{
+  const record=collectRecord();
+  if(!record)return;
+  record.integrationStatus="draft";
+  const list=JSON.parse(localStorage.getItem("mbDnpOrders")||"[]");
+  const existing=list.findIndex(x=>x.number===record.number);
+  if(existing>=0)list[existing]=record;else list.unshift(record);
+  localStorage.setItem("mbDnpOrders",JSON.stringify(list));
+  osNumber.textContent=record.number;
+  osValidation.textContent="Rascunho "+record.number+" salvo localmente.";
+  osValidation.className="validation ok";
+  updateLocalStats();
+});
+
+$("printBtn").addEventListener("click",()=>{
+  if(!savedRecord)return;
+  const w=window.open("","_blank","width=800,height=900");
+  if(!w){alert("O navegador bloqueou a janela de impressão.");return}
+  const r=savedRecord;
+  w.document.write(
+    "<!doctype html><html lang='pt-BR'><head><meta charset='utf-8'><title>"+r.number+"</title><style>"+
+    "body{font-family:Arial,sans-serif;color:#111;padding:36px;max-width:760px;margin:auto}"+
+    "h1{margin:0 0 4px}h2{margin-top:28px;border-bottom:1px solid #ddd;padding-bottom:6px}"+
+    ".muted{color:#666;font-size:12px}.grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}"+
+    ".box{border:1px solid #ccc;padding:14px;border-radius:8px}.label{font-size:11px;color:#666}.value{font-size:20px;font-weight:700;margin-top:5px}"+
+    "table{width:100%;border-collapse:collapse;margin-top:14px}td,th{border:1px solid #ddd;padding:9px;text-align:left}.footer{margin-top:40px;font-size:11px;color:#666}"+
+    "</style></head><body><h1>MB.Óptica</h1><div class='muted'>Ordem de Serviço • "+r.number+"</div>"+
+    "<h2>Cliente</h2><p><b>"+escapeHtml(r.customer.name)+"</b><br>Telefone: "+escapeHtml(r.customer.phone||"—")+"<br>CPF: "+escapeHtml(r.customer.cpf||"—")+"<br>Tipo: "+escapeHtml(r.customer.type)+"</p>"+
+    "<h2>Medição DNP</h2><div class='grid'><div class='box'><div class='label'>OD</div><div class='value'>"+r.measurement.odMm.toFixed(1)+" mm</div></div>"+
+    "<div class='box'><div class='label'>OE</div><div class='value'>"+r.measurement.oeMm.toFixed(1)+" mm</div></div>"+
+    "<div class='box'><div class='label'>DNP</div><div class='value'>"+r.measurement.dnpMm.toFixed(1)+" mm</div></div></div>"+
+    "<h2>Dados do atendimento</h2><table><tr><th>Venda</th><td>"+escapeHtml(r.sale.number||"—")+"</td></tr><tr><th>Estabilidade</th><td>±"+r.measurement.stabilitySdMm.toFixed(2)+" mm</td></tr>"+
+    "<tr><th>Calibração</th><td>"+r.calibration.referenceMm.toFixed(1)+" mm • "+r.calibration.pxPerMm.toFixed(2)+" px/mm</td></tr></table>"+
+    "<h2>Observações</h2><p>"+escapeHtml(r.customer.notes||"—")+"</p><div class='footer'>MB.Óptica DNP • registro local • validar conforme protocolo da ótica.</div></body></html>"
+  );
+  w.document.close();w.focus();w.print();
+});
+
+function escapeHtml(v){
+  return String(v).replace(/[&<>"']/g,function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[c];
+  });
+}
+$("anotherBtn").addEventListener("click",()=>{
+  customerName.value="";customerPhone.value="";customerCpf.value="";saleNumber.value="";customerNotes.value="";
+  currentOs=null;savedRecord=null;savedPanel.classList.add("hidden");osPanel.classList.add("hidden");
+  invalidateCalibration("Novo atendimento: faça uma nova calibração para a posição atual.");
+  workspace.scrollIntoView({behavior:"smooth"});
+});
+$("settingsBtn").addEventListener("click",()=>{
+  settingsPanel.classList.toggle("hidden");updateLocalStats();
+});
+$("closeSettingsBtn").addEventListener("click",()=>settingsPanel.classList.add("hidden"));
+$("clearLocalBtn").addEventListener("click",()=>{
+  if(!confirm("Limpar calibração e O.S. salvas neste dispositivo?"))return;
+  localStorage.removeItem("mbDnpCalibration");
+  localStorage.removeItem("mbDnpCalibrationLabel");
+  localStorage.removeItem("mbDnpOrders");
+  calibration=null;updateLocalStats();
+  if(running)invalidateCalibration("Dados locais limpos. Faça uma nova calibração.");
+});
+function updateLocalStats(){
+  $("lastCalibration").textContent=localStorage.getItem("mbDnpCalibrationLabel")||"Nenhuma";
+  const list=JSON.parse(localStorage.getItem("mbDnpOrders")||"[]");
+  $("localCount").textContent=String(list.length);
+}
+updateLocalStats();
+setStep(1);
