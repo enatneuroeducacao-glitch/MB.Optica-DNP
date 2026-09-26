@@ -459,13 +459,13 @@ async function start(){
     calibrationOverlay.classList.remove("hidden");
     measurementPanel.classList.add("hidden");
     setStep(2);
+    calibration=null;
+    calibrationState.textContent="Não calibrado";
+    calibrationState.className="pill amber";
+    calibrationValidation.textContent="Faça a calibração física desta sessão antes de medir.";
+    calibrationValidation.className="validation warn";
+    scaleValue.textContent="—";
     resetCalibrationHandles();
-    loadLocalCalibration();
-    if(calibration){
-      calibrationOverlay.classList.add("hidden");
-      measurementPanel.classList.remove("hidden");
-      setStep(3);
-    }
   }catch(e){
     console.error(e);
     alert("Permita o acesso à câmera no navegador e tente novamente.");
