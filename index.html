@@ -44,9 +44,13 @@
     <section class="card results hidden" id="results">
       <div class="live-state" id="liveState">Aguardando rosto…</div>
       <div class="measure-grid">
-        <div class="measure"><span>OD</span><strong id="od">—</strong><small>centro da íris</small></div>
-        <div class="measure"><span>OE</span><strong id="oe">—</strong><small>centro da íris</small></div>
-        <div class="measure total"><span>DNP</span><strong id="dnp">—</strong><small>aguardando validação visual</small></div>
+        <div class="measure"><span>OD</span><strong id="od">—</strong><small>distância naso-pupilar</small></div>
+        <div class="measure"><span>OE</span><strong id="oe">—</strong><small>distância naso-pupilar</small></div>
+        <div class="measure total"><span>DNP</span><strong id="dnp">—</strong><small>distância binocular</small></div>
+      </div>
+      <div class="calibration-note">
+        <strong>Leitura experimental</strong>
+        <span>A escala atual usa uma referência anatômica provisória. A calibração física será adicionada na próxima etapa.</span>
       </div>
       <button class="secondary" id="resetBtn">Nova medição</button>
     </section>
@@ -56,9 +60,10 @@
       <ol>
         <li>Permita o acesso à câmera.</li>
         <li>Mantenha o rosto reto e os dois olhos visíveis.</li>
-        <li>Confira se a cruz branca fica exatamente no centro de cada pupila.</li>
-        <li>Confira se o círculo azul acompanha a íris.</li>
-        <li>Repita em diferentes posições e iluminações.</li>
+        <li>Mantenha os olhos abertos e o rosto reto.</li>
+        <li>Aguarde a leitura estabilizar.</li>
+        <li>Confira OD, OE e DNP.</li>
+        <li>Repita em diferentes posições e iluminações para comparar a estabilidade.</li>
       </ol>
     </section>
 
