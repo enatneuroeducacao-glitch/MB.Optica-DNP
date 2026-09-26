@@ -29,6 +29,10 @@ const RIGHT_IRIS_CENTER = 468;
 const LEFT_EYE_CORNERS = [362, 263];
 const RIGHT_EYE_CORNERS = [33, 133];
 
+// Referência central do nariz/násion para separar a DNP monocular.
+// Nesta fase o resultado é exibido em pixels; a calibração para mm virá depois.
+const NASION = 168;
+
 function point(landmarks, id) {
   const p = landmarks[id];
   return p ? { x: p.x, y: p.y } : null;
@@ -65,12 +69,22 @@ function drawPoint(p, color) {
   ctx.stroke();
 }
 
-function drawLine(a,b) {
+function drawLine(a,b, color = "#4db2ff", width = 3) {
   ctx.beginPath();
   ctx.moveTo(a.x * canvas.width, a.y * canvas.height);
   ctx.lineTo(b.x * canvas.width, b.y * canvas.height);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.stroke();
+}
+
+function drawNasion(p) {
+  ctx.beginPath();
+  ctx.arc(p.x * canvas.width, p.y * canvas.height, 6, 0, Math.PI * 2);
+  ctx.fillStyle = "#ffffff";
+  ctx.fill();
   ctx.strokeStyle = "#4db2ff";
-  ctx.lineWidth = 3;
+  ctx.lineWidth = 2;
   ctx.stroke();
 }
 
@@ -123,8 +137,9 @@ function onResults(res) {
   const lm = res.multiFaceLandmarks[0];
   const rawRight = point(lm, RIGHT_IRIS_CENTER);
   const rawLeft = point(lm, LEFT_IRIS_CENTER);
+  const rawNasion = point(lm, NASION);
 
-  if (!rawLeft || !rawRight) {
+  if (!rawLeft || !rawRight || !rawNasion) {
     liveState.textContent = "Olhos não detectados";
     smoothLeft = null;
     smoothRight = null;
@@ -133,20 +148,28 @@ function onResults(res) {
 
   smoothLeft = smooth(rawLeft, smoothLeft);
   smoothRight = smooth(rawRight, smoothRight);
+  const nasion = rawNasion;
 
   drawAdaptiveRuler(lm, smoothLeft, smoothRight);
   drawPoint(smoothLeft, "#55d6ff");
   drawPoint(smoothRight, "#55d6ff");
-  drawLine(smoothLeft, smoothRight);
+  drawNasion(nasion);
 
-  const px = distance(smoothLeft, smoothRight) * canvas.width;
-  last = px;
+  // Medição monocular provisória: cada pupila até a referência central do nariz.
+  // A soma das duas medidas corresponde à DNP binocular provisória.
+  const odPx = distance(smoothRight, nasion) * canvas.width;
+  const oePx = distance(smoothLeft, nasion) * canvas.width;
+  const totalPx = odPx + oePx;
+  last = totalPx;
+
+  drawLine(smoothRight, nasion, "rgba(85,214,255,.75)", 2);
+  drawLine(nasion, smoothLeft, "rgba(85,214,255,.75)", 2);
 
   liveState.textContent = "Pupilas detectadas";
   statusDot.classList.add("active");
-  odEl.textContent = "OK";
-  oeEl.textContent = "OK";
-  dnpEl.textContent = Math.round(px) + " px";
+  odEl.textContent = Math.round(odPx) + " px";
+  oeEl.textContent = Math.round(oePx) + " px";
+  dnpEl.textContent = Math.round(totalPx) + " px";
 }
 
 const faceMesh = new FaceMesh({
