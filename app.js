@@ -85,43 +85,101 @@ function toViewPoint(p) {
   };
 }
 
-// Usa o centro do iris refinado do MediaPipe.
-// Média dos 5 landmarks do iris reduz pequenos deslocamentos do landmark central.
-function irisCenter(landmarks, ids) {
-  return averagePoint(landmarks, ids);
-}
+// Diagnóstico: usamos o landmark CENTRAL da íris fornecido pelo MediaPipe.
+// 468 = centro da íris do olho direito.
+// 473 = centro da íris do olho esquerdo.
+// Os demais landmarks do anel servem apenas para desenhar a geometria da íris.
+const LEFT_IRIS_CENTER_ID = 473;
+const RIGHT_IRIS_CENTER_ID = 468;
+const LEFT_IRIS_RING_IDS = [474, 475, 476, 477];
+const RIGHT_IRIS_RING_IDS = [469, 470, 471, 472];
 
-const LEFT_IRIS_IDS = [473, 474, 475, 476, 477];
-const RIGHT_IRIS_IDS = [468, 469, 470, 471, 472];
+// Contornos aproximados das pálpebras para conferência visual.
+const RIGHT_EYE_CONTOUR = [33, 7, 163, 144, 145, 153, 154, 155, 133];
+const LEFT_EYE_CONTOUR = [362, 382, 381, 380, 374, 373, 390, 249, 263];
 
 function drawPoint(p, color) {
   ctx.beginPath();
-  ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
+  ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
   ctx.fillStyle = color;
   ctx.fill();
+
   ctx.beginPath();
-  ctx.arc(p.x, p.y, 13, 0, Math.PI * 2);
-  ctx.strokeStyle = "rgba(255,255,255,.9)";
+  ctx.arc(p.x, p.y, 11, 0, Math.PI * 2);
+  ctx.strokeStyle = "#ffffff";
   ctx.lineWidth = 2;
   ctx.stroke();
 }
 
-function drawLine(a,b, color = "#4db2ff", width = 3) {
+function drawIris(landmarks, centerId, ringIds) {
+  const centerRaw = point(landmarks, centerId);
+  const ringRaw = ringIds.map(id => point(landmarks, id)).filter(Boolean);
+  if (!centerRaw || ringRaw.length < 3) return null;
+
+  const center = toViewPoint(centerRaw);
+  const ring = ringRaw.map(toViewPoint);
+
+  const radius = ring.reduce((sum, p) => sum + distance(center, p), 0) / ring.length;
+
   ctx.beginPath();
-  ctx.moveTo(a.x, a.y);
-  ctx.lineTo(b.x, b.y);
-  ctx.strokeStyle = color;
-  ctx.lineWidth = width;
+  ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
+  ctx.strokeStyle = "rgba(85,214,255,.95)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Pequena cruz no centro exato do landmark 468/473.
+  ctx.beginPath();
+  ctx.moveTo(center.x - 9, center.y);
+  ctx.lineTo(center.x + 9, center.y);
+  ctx.moveTo(center.x, center.y - 9);
+  ctx.lineTo(center.x, center.y + 9);
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  drawPoint(center, "#55d6ff");
+  return center;
+}
+
+function drawEyeContour(landmarks, ids) {
+  const pts = ids.map(id => point(landmarks, id)).filter(Boolean).map(toViewPoint);
+  if (pts.length < 2) return;
+
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) {
+    ctx.lineTo(pts[i].x, pts[i].y);
+  }
+  ctx.strokeStyle = "rgba(255,255,255,.65)";
+  ctx.lineWidth = 1.5;
   ctx.stroke();
 }
 
 function drawNasion(p) {
   ctx.beginPath();
-  ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+  ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
   ctx.fillStyle = "#ffffff";
   ctx.fill();
-  ctx.strokeStyle = "#4db2ff";
+  ctx.strokeStyle = "#ffcc66";
   ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
+function drawLabel(text, p, offsetX = 8, offsetY = -10) {
+  ctx.font = "bold 11px system-ui, sans-serif";
+  ctx.fillStyle = "rgba(255,255,255,.95)";
+  ctx.strokeStyle = "rgba(0,0,0,.65)";
+  ctx.lineWidth = 3;
+  ctx.strokeText(text, p.x + offsetX, p.y + offsetY);
+  ctx.fillText(text, p.x + offsetX, p.y + offsetY);
+}
+
+function drawLine(a,b, color = "#4db2ff", width = 2) {
+  ctx.beginPath();
+  ctx.moveTo(a.x, a.y);
+  ctx.lineTo(b.x, b.y);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
   ctx.stroke();
 }
 
@@ -166,7 +224,7 @@ function onResults(res) {
     canvas.width = Math.round(width);
     canvas.height = Math.round(height);
   }
-  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   if (!res.multiFaceLandmarks || !res.multiFaceLandmarks.length) {
     liveState.textContent = "Rosto não detectado";
@@ -178,46 +236,41 @@ function onResults(res) {
   }
 
   const lm = res.multiFaceLandmarks[0];
-  const rawRight = irisCenter(lm, RIGHT_IRIS_IDS);
-  const rawLeft = irisCenter(lm, LEFT_IRIS_IDS);
+
+  // Desenha os contornos primeiro para que os marcadores fiquem por cima.
+  drawEyeContour(lm, RIGHT_EYE_CONTOUR);
+  drawEyeContour(lm, LEFT_EYE_CONTOUR);
+
+  const rightView = drawIris(lm, RIGHT_IRIS_CENTER_ID, RIGHT_IRIS_RING_IDS);
+  const leftView = drawIris(lm, LEFT_IRIS_CENTER_ID, LEFT_IRIS_RING_IDS);
   const rawNasion = point(lm, NASION);
 
-  if (!rawLeft || !rawRight || !rawNasion) {
+  if (!rightView || !leftView || !rawNasion) {
     liveState.textContent = "Olhos não detectados";
     smoothLeft = null;
     smoothRight = null;
+    odEl.textContent = "—";
+    oeEl.textContent = "—";
+    dnpEl.textContent = "—";
     return;
   }
 
-  smoothLeft = smooth(rawLeft, smoothLeft);
-  smoothRight = smooth(rawRight, smoothRight);
-
-  // Converte os landmarks para a mesma área visual do vídeo.
-  // Isso corrige o deslocamento causado pelo object-fit: cover.
-  const leftView = toViewPoint(smoothLeft);
-  const rightView = toViewPoint(smoothRight);
   const nasion = toViewPoint(rawNasion);
 
-  drawAdaptiveRuler(lm, leftView, rightView);
-  drawPoint(leftView, "#55d6ff");
-  drawPoint(rightView, "#55d6ff");
+  // Sem cálculo de DNP nesta fase: o objetivo é validar visualmente
+  // se os centros 468/473 coincidem com as pupilas.
   drawNasion(nasion);
+  drawLabel("OD", rightView, 10, -10);
+  drawLabel("OE", leftView, 10, -10);
 
-  // Medição monocular provisória em pixels da área visível.
-  const odPx = distance(rightView, nasion);
-  const oePx = distance(leftView, nasion);
-  const totalPx = odPx + oePx;
-  last = totalPx;
-
-  drawLine(rightView, nasion, "rgba(85,214,255,.75)", 2);
-  drawLine(nasion, leftView, "rgba(85,214,255,.75)", 2);
-
-  liveState.textContent = "Pupilas detectadas";
+  liveState.textContent = "Diagnóstico ocular — verifique os centros";
   statusDot.classList.add("active");
-  odEl.textContent = Math.round(odPx) + " px";
-  oeEl.textContent = Math.round(oePx) + " px";
-  dnpEl.textContent = Math.round(totalPx) + " px";
+
+  odEl.textContent = "✓";
+  oeEl.textContent = "✓";
+  dnpEl.textContent = "—";
 }
+
 
 const faceMesh = new FaceMesh({
   locateFile: file => "https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/" + file
