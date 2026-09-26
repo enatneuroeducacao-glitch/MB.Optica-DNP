@@ -24,6 +24,15 @@ let last = null;
 let smoothLeft = null;
 let smoothRight = null;
 
+// Leitura estável: acumulamos vários frames antes de apresentar o resultado.
+let measurementSamples = [];
+let stableReading = null;
+const STABLE_FRAMES = 18;
+
+// Escala provisória baseada no diâmetro anatômico médio da íris.
+// Será substituída por calibração física na próxima etapa.
+const ASSUMED_IRIS_DIAMETER_MM = 11.8;
+
 const LEFT_IRIS_CENTER = 473;
 const RIGHT_IRIS_CENTER = 468;
 const LEFT_EYE_CORNERS = [362, 263];
@@ -218,6 +227,85 @@ function drawAdaptiveRuler(landmarks, left, right) {
   }
 }
 
+
+function median(values) {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a,b) => a-b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+function estimateIrisRadiusPx(landmarks, centerId, ringIds) {
+  const c = point(landmarks, centerId);
+  if (!c) return null;
+  const radii = ringIds
+    .map(id => point(landmarks, id))
+    .filter(Boolean)
+    .map(p => distance(c, p));
+  return radii.length ? median(radii) : null;
+}
+
+function getMeasurementReference(lm) {
+  // Referência facial central no plano dos olhos:
+  // midpoint entre os cantos internos dos dois olhos.
+  const rightInner = point(lm, 133);
+  const leftInner = point(lm, 362);
+  if (!rightInner || !leftInner) return null;
+  return {
+    x: (rightInner.x + leftInner.x) / 2,
+    y: (rightInner.y + leftInner.y) / 2
+  };
+}
+
+function addMeasurementSample(lm) {
+  const right = point(lm, RIGHT_IRIS_CENTER_ID);
+  const left = point(lm, LEFT_IRIS_CENTER_ID);
+  const ref = getMeasurementReference(lm);
+
+  if (!right || !left || !ref) return;
+
+  const irisRight = estimateIrisRadiusPx(lm, RIGHT_IRIS_CENTER_ID, RIGHT_IRIS_RING_IDS);
+  const irisLeft = estimateIrisRadiusPx(lm, LEFT_IRIS_CENTER_ID, LEFT_IRIS_RING_IDS);
+  if (!irisRight || !irisLeft) return;
+
+  const irisDiameterPx = median([irisRight * 2, irisLeft * 2]);
+
+  // Distâncias na imagem original, antes da conversão visual.
+  const odPx = distance(right, ref);
+  const oePx = distance(left, ref);
+
+  measurementSamples.push({ odPx, oePx, irisDiameterPx });
+
+  if (measurementSamples.length > STABLE_FRAMES) {
+    measurementSamples.shift();
+  }
+
+  if (measurementSamples.length < STABLE_FRAMES) {
+    const progress = Math.round((measurementSamples.length / STABLE_FRAMES) * 100);
+    liveState.textContent = `Estabilizando leitura… ${progress}%`;
+    return;
+  }
+
+  const odMedian = median(measurementSamples.map(s => s.odPx));
+  const oeMedian = median(measurementSamples.map(s => s.oePx));
+  const irisMedian = median(measurementSamples.map(s => s.irisDiameterPx));
+
+  const pxPerMm = irisMedian / ASSUMED_IRIS_DIAMETER_MM;
+
+  stableReading = {
+    odMm: odMedian / pxPerMm,
+    oeMm: oeMedian / pxPerMm,
+    dnpMm: (odMedian + oeMedian) / pxPerMm,
+    irisDiameterPx: irisMedian,
+    pxPerMm
+  };
+
+  odEl.textContent = stableReading.odMm.toFixed(1) + " mm";
+  oeEl.textContent = stableReading.oeMm.toFixed(1) + " mm";
+  dnpEl.textContent = stableReading.dnpMm.toFixed(1) + " mm";
+  liveState.textContent = "Leitura estabilizada";
+}
+
 function onResults(res) {
   const { width, height } = getViewSize();
   if (canvas.width !== Math.round(width) || canvas.height !== Math.round(height)) {
@@ -229,48 +317,50 @@ function onResults(res) {
   if (!res.multiFaceLandmarks || !res.multiFaceLandmarks.length) {
     liveState.textContent = "Rosto não detectado";
     statusDot.classList.remove("active");
-    odEl.textContent = "—";
-    oeEl.textContent = "—";
-    dnpEl.textContent = "—";
     return;
   }
 
   const lm = res.multiFaceLandmarks[0];
 
-  // Desenha os contornos primeiro para que os marcadores fiquem por cima.
+  // Contornos para orientação visual.
   drawEyeContour(lm, RIGHT_EYE_CONTOUR);
   drawEyeContour(lm, LEFT_EYE_CONTOUR);
 
   const rightView = drawIris(lm, RIGHT_IRIS_CENTER_ID, RIGHT_IRIS_RING_IDS);
   const leftView = drawIris(lm, LEFT_IRIS_CENTER_ID, LEFT_IRIS_RING_IDS);
-  const rawNasion = point(lm, NASION);
 
-  if (!rightView || !leftView || !rawNasion) {
+  if (!rightView || !leftView) {
     liveState.textContent = "Olhos não detectados";
-    smoothLeft = null;
-    smoothRight = null;
-    odEl.textContent = "—";
-    oeEl.textContent = "—";
-    dnpEl.textContent = "—";
     return;
   }
 
-  const nasion = toViewPoint(rawNasion);
+  const refRaw = getMeasurementReference(lm);
+  if (!refRaw) {
+    liveState.textContent = "Referência facial não detectada";
+    return;
+  }
 
-  // Sem cálculo de DNP nesta fase: o objetivo é validar visualmente
-  // se os centros 468/473 coincidem com as pupilas.
-  drawNasion(nasion);
+  const refView = toViewPoint(refRaw);
+
+  // Referência visual entre os cantos internos dos olhos.
+  ctx.beginPath();
+  ctx.moveTo(refView.x, refView.y - 14);
+  ctx.lineTo(refView.x, refView.y + 14);
+  ctx.strokeStyle = "rgba(255,204,102,.95)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
   drawLabel("OD", rightView, 10, -10);
   drawLabel("OE", leftView, 10, -10);
 
-  liveState.textContent = "Diagnóstico ocular — verifique os centros";
+  // Linhas provisórias para tornar a origem de OD/OE compreensível.
+  drawLine(rightView, refView, "rgba(85,214,255,.65)", 1.5);
+  drawLine(refView, leftView, "rgba(85,214,255,.65)", 1.5);
+
+  addMeasurementSample(lm);
+
   statusDot.classList.add("active");
-
-  odEl.textContent = "✓";
-  oeEl.textContent = "✓";
-  dnpEl.textContent = "—";
 }
-
 
 const faceMesh = new FaceMesh({
   locateFile: file => "https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/" + file
@@ -396,6 +486,8 @@ function reset() {
   last = null;
   smoothLeft = null;
   smoothRight = null;
+  measurementSamples = [];
+  stableReading = null;
 }
 
 frontBtn.addEventListener("click", () => selectCamera("user"));
