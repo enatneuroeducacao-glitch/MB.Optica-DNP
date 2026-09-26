@@ -57,13 +57,50 @@ function smooth(current, previous, factor = 0.35) {
   };
 }
 
+function getViewSize() {
+  const rect = viewer.getBoundingClientRect();
+  return {
+    width: Math.max(1, rect.width),
+    height: Math.max(1, rect.height)
+  };
+}
+
+// MediaPipe entrega coordenadas relativas ao quadro original da câmera.
+// Como o vídeo usa object-fit: cover, parte das laterais é recortada.
+// Esta função converte corretamente a coordenada da câmera para a área visível.
+function toViewPoint(p) {
+  const sourceW = video.videoWidth || 1280;
+  const sourceH = video.videoHeight || 720;
+  const { width, height } = getViewSize();
+
+  const scale = Math.max(width / sourceW, height / sourceH);
+  const renderedW = sourceW * scale;
+  const renderedH = sourceH * scale;
+  const cropX = (renderedW - width) / 2;
+  const cropY = (renderedH - height) / 2;
+
+  return {
+    x: p.x * renderedW - cropX,
+    y: p.y * renderedH - cropY
+  };
+}
+
+// Usa o centro do iris refinado do MediaPipe.
+// Média dos 5 landmarks do iris reduz pequenos deslocamentos do landmark central.
+function irisCenter(landmarks, ids) {
+  return averagePoint(landmarks, ids);
+}
+
+const LEFT_IRIS_IDS = [473, 474, 475, 476, 477];
+const RIGHT_IRIS_IDS = [468, 469, 470, 471, 472];
+
 function drawPoint(p, color) {
   ctx.beginPath();
-  ctx.arc(p.x * canvas.width, p.y * canvas.height, 7, 0, Math.PI * 2);
+  ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
   ctx.fillStyle = color;
   ctx.fill();
   ctx.beginPath();
-  ctx.arc(p.x * canvas.width, p.y * canvas.height, 13, 0, Math.PI * 2);
+  ctx.arc(p.x, p.y, 13, 0, Math.PI * 2);
   ctx.strokeStyle = "rgba(255,255,255,.9)";
   ctx.lineWidth = 2;
   ctx.stroke();
@@ -71,8 +108,8 @@ function drawPoint(p, color) {
 
 function drawLine(a,b, color = "#4db2ff", width = 3) {
   ctx.beginPath();
-  ctx.moveTo(a.x * canvas.width, a.y * canvas.height);
-  ctx.lineTo(b.x * canvas.width, b.y * canvas.height);
+  ctx.moveTo(a.x, a.y);
+  ctx.lineTo(b.x, b.y);
   ctx.strokeStyle = color;
   ctx.lineWidth = width;
   ctx.stroke();
@@ -80,7 +117,7 @@ function drawLine(a,b, color = "#4db2ff", width = 3) {
 
 function drawNasion(p) {
   ctx.beginPath();
-  ctx.arc(p.x * canvas.width, p.y * canvas.height, 6, 0, Math.PI * 2);
+  ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
   ctx.fillStyle = "#ffffff";
   ctx.fill();
   ctx.strokeStyle = "#4db2ff";
@@ -89,22 +126,25 @@ function drawNasion(p) {
 }
 
 function drawAdaptiveRuler(landmarks, left, right) {
-  const leftCorners = averagePoint(landmarks, LEFT_EYE_CORNERS);
-  const rightCorners = averagePoint(landmarks, RIGHT_EYE_CORNERS);
-  if (!leftCorners || !rightCorners) return;
+  const leftCornersRaw = averagePoint(landmarks, LEFT_EYE_CORNERS);
+  const rightCornersRaw = averagePoint(landmarks, RIGHT_EYE_CORNERS);
+  if (!leftCornersRaw || !rightCornersRaw) return;
+
+  const leftCorners = toViewPoint(leftCornersRaw);
+  const rightCorners = toViewPoint(rightCornersRaw);
 
   const y = (left.y + right.y) / 2;
   const eyeSpan = distance(leftCorners, rightCorners);
   const extension = eyeSpan * 0.16;
 
   const start = { x: Math.max(0, rightCorners.x - extension), y };
-  const end = { x: Math.min(1, leftCorners.x + extension), y };
+  const end = { x: Math.min(canvas.width, leftCorners.x + extension), y };
 
   ctx.save();
   ctx.setLineDash([10, 8]);
   ctx.beginPath();
-  ctx.moveTo(start.x * canvas.width, start.y * canvas.height);
-  ctx.lineTo(end.x * canvas.width, end.y * canvas.height);
+  ctx.moveTo(start.x, start.y);
+  ctx.lineTo(end.x, end.y);
   ctx.strokeStyle = "rgba(255,255,255,.75)";
   ctx.lineWidth = 2;
   ctx.stroke();
@@ -112,8 +152,8 @@ function drawAdaptiveRuler(landmarks, left, right) {
 
   for (const p of [start, end]) {
     ctx.beginPath();
-    ctx.moveTo(p.x * canvas.width, (p.y - 0.018) * canvas.height);
-    ctx.lineTo(p.x * canvas.width, (p.y + 0.018) * canvas.height);
+    ctx.moveTo(p.x, p.y - 12);
+    ctx.lineTo(p.x, p.y + 12);
     ctx.strokeStyle = "rgba(255,255,255,.9)";
     ctx.lineWidth = 2;
     ctx.stroke();
@@ -121,8 +161,11 @@ function drawAdaptiveRuler(landmarks, left, right) {
 }
 
 function onResults(res) {
-  canvas.width = video.videoWidth || 720;
-  canvas.height = video.videoHeight || 960;
+  const { width, height } = getViewSize();
+  if (canvas.width !== Math.round(width) || canvas.height !== Math.round(height)) {
+    canvas.width = Math.round(width);
+    canvas.height = Math.round(height);
+  }
   ctx.clearRect(0,0,canvas.width,canvas.height);
 
   if (!res.multiFaceLandmarks || !res.multiFaceLandmarks.length) {
@@ -135,8 +178,8 @@ function onResults(res) {
   }
 
   const lm = res.multiFaceLandmarks[0];
-  const rawRight = point(lm, RIGHT_IRIS_CENTER);
-  const rawLeft = point(lm, LEFT_IRIS_CENTER);
+  const rawRight = irisCenter(lm, RIGHT_IRIS_IDS);
+  const rawLeft = irisCenter(lm, LEFT_IRIS_IDS);
   const rawNasion = point(lm, NASION);
 
   if (!rawLeft || !rawRight || !rawNasion) {
@@ -148,22 +191,26 @@ function onResults(res) {
 
   smoothLeft = smooth(rawLeft, smoothLeft);
   smoothRight = smooth(rawRight, smoothRight);
-  const nasion = rawNasion;
 
-  drawAdaptiveRuler(lm, smoothLeft, smoothRight);
-  drawPoint(smoothLeft, "#55d6ff");
-  drawPoint(smoothRight, "#55d6ff");
+  // Converte os landmarks para a mesma área visual do vídeo.
+  // Isso corrige o deslocamento causado pelo object-fit: cover.
+  const leftView = toViewPoint(smoothLeft);
+  const rightView = toViewPoint(smoothRight);
+  const nasion = toViewPoint(rawNasion);
+
+  drawAdaptiveRuler(lm, leftView, rightView);
+  drawPoint(leftView, "#55d6ff");
+  drawPoint(rightView, "#55d6ff");
   drawNasion(nasion);
 
-  // Medição monocular provisória: cada pupila até a referência central do nariz.
-  // A soma das duas medidas corresponde à DNP binocular provisória.
-  const odPx = distance(smoothRight, nasion) * canvas.width;
-  const oePx = distance(smoothLeft, nasion) * canvas.width;
+  // Medição monocular provisória em pixels da área visível.
+  const odPx = distance(rightView, nasion);
+  const oePx = distance(leftView, nasion);
   const totalPx = odPx + oePx;
   last = totalPx;
 
-  drawLine(smoothRight, nasion, "rgba(85,214,255,.75)", 2);
-  drawLine(nasion, smoothLeft, "rgba(85,214,255,.75)", 2);
+  drawLine(rightView, nasion, "rgba(85,214,255,.75)", 2);
+  drawLine(nasion, leftView, "rgba(85,214,255,.75)", 2);
 
   liveState.textContent = "Pupilas detectadas";
   statusDot.classList.add("active");
