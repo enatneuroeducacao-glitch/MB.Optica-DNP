@@ -246,14 +246,19 @@ function estimateIrisRadiusPx(landmarks, centerId, ringIds) {
 }
 
 function getMeasurementReference(lm) {
-  // Referência facial central no plano dos olhos:
-  // midpoint entre os cantos internos dos dois olhos.
-  const rightInner = point(lm, 133);
-  const leftInner = point(lm, 362);
-  if (!rightInner || !leftInner) return null;
+  // Para a DNP monocular precisamos de uma referência da linha média facial,
+  // e não do meio entre os cantos internos dos olhos.
+  // Usamos dois pontos da região nasal para reduzir o efeito de um único landmark.
+  const noseBridge = point(lm, 168);
+  const noseTip = point(lm, 1);
+
+  if (!noseBridge || !noseTip) return null;
+
+  // A referência é a linha média nasal, na altura média das pupilas.
+  // O eixo X vem da média dos pontos nasais; o eixo Y será ajustado pelo chamador.
   return {
-    x: (rightInner.x + leftInner.x) / 2,
-    y: (rightInner.y + leftInner.y) / 2
+    x: (noseBridge.x + noseTip.x) / 2,
+    y: (noseBridge.y + noseTip.y) / 2
   };
 }
 
@@ -264,6 +269,9 @@ function addMeasurementSample(lm) {
 
   if (!right || !left || !ref) return;
 
+  // Para DNP, a medida é horizontal até a linha média facial.
+  ref.y = (right.y + left.y) / 2;
+
   const irisRight = estimateIrisRadiusPx(lm, RIGHT_IRIS_CENTER_ID, RIGHT_IRIS_RING_IDS);
   const irisLeft = estimateIrisRadiusPx(lm, LEFT_IRIS_CENTER_ID, LEFT_IRIS_RING_IDS);
   if (!irisRight || !irisLeft) return;
@@ -271,8 +279,8 @@ function addMeasurementSample(lm) {
   const irisDiameterPx = median([irisRight * 2, irisLeft * 2]);
 
   // Distâncias na imagem original, antes da conversão visual.
-  const odPx = distance(right, ref);
-  const oePx = distance(left, ref);
+  const odPx = Math.abs(right.x - ref.x);
+  const oePx = Math.abs(left.x - ref.x);
 
   measurementSamples.push({ odPx, oePx, irisDiameterPx });
 
