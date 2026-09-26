@@ -201,6 +201,10 @@ function setCalibrationFromHandles(){
   calibrationOverlay.classList.add("hidden");
   setStep(3);
   resetSamples();
+  calibrationPanel.scrollIntoView({behavior:"smooth",block:"start"});
+  setTimeout(()=>{
+    measurementPanel.scrollIntoView({behavior:"smooth",block:"start"});
+  },450);
   return true;
 }
 $("confirmCalibrationBtn").addEventListener("click",setCalibrationFromHandles);
