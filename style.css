@@ -50,3 +50,7 @@ canvas { position:absolute; inset:0; width:100%; height:100%; transform:scaleX(-
 .camera-btn{border:1px solid #29496b;background:#0b192b;color:#b9c9dc;border-radius:12px;padding:12px;font-size:1rem}
 .camera-btn.active{background:#173e61;color:#fff;border-color:#4db2ff}
 .camera-status{margin-top:8px;color:#91a8c2;font-size:.85rem;text-align:center}
+
+.calibration-note{margin-top:12px;padding:12px 14px;border:1px solid #31445d;border-radius:12px;background:#0b1728;display:flex;flex-direction:column;gap:5px}
+.calibration-note strong{font-size:.78rem;color:#f6c76b}
+.calibration-note span{font-size:.72rem;line-height:1.4;color:#8192a8}
