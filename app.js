@@ -3,6 +3,10 @@ const canvas = document.getElementById("overlay");
 const ctx = canvas.getContext("2d");
 const startBtn = document.getElementById("startBtn");
 const resetBtn = document.getElementById("resetBtn");
+const frontBtn = document.getElementById("frontBtn");
+const rearBtn = document.getElementById("rearBtn");
+const cameraControls = document.getElementById("cameraControls");
+const cameraStatus = document.getElementById("cameraStatus");
 const intro = document.getElementById("intro");
 const viewer = document.getElementById("viewer");
 const results = document.getElementById("results");
@@ -13,18 +17,15 @@ const oeEl = document.getElementById("oe");
 const dnpEl = document.getElementById("dnp");
 const statusDot = document.getElementById("statusDot");
 
-let camera = null;
+let stream = null;
+let running = false;
+let cameraFacing = "user";
 let last = null;
 let smoothLeft = null;
 let smoothRight = null;
 
-// O MediaPipe Face Mesh fornece um landmark central específico para cada íris.
-// Usá-lo é mais preciso do que calcular a média dos quatro pontos periféricos.
 const LEFT_IRIS_CENTER = 473;
 const RIGHT_IRIS_CENTER = 468;
-
-// Cantos dos olhos: usados para criar uma régua/guia adaptativa ao tamanho
-// real do rosto, em vez de uma régua com posição fixa.
 const LEFT_EYE_CORNERS = [362, 263];
 const RIGHT_EYE_CORNERS = [33, 133];
 
@@ -36,7 +37,8 @@ function point(landmarks, id) {
 function averagePoint(landmarks, ids) {
   const pts = ids.map(i => point(landmarks, i)).filter(Boolean);
   if (!pts.length) return null;
-  return pts.reduce((a, p) => ({ x: a.x + p.x, y: a.y + p.y }), {x:0,y:0});
+  const sum = pts.reduce((a, p) => ({ x: a.x + p.x, y: a.y + p.y }), {x:0,y:0});
+  return { x: sum.x / pts.length, y: sum.y / pts.length };
 }
 
 function distance(a,b) {
@@ -77,20 +79,12 @@ function drawAdaptiveRuler(landmarks, left, right) {
   const rightCorners = averagePoint(landmarks, RIGHT_EYE_CORNERS);
   if (!leftCorners || !rightCorners) return;
 
-  // A régua acompanha automaticamente a largura dos olhos/rosto.
-  // Os marcadores de medição continuam presos aos centros das íris.
   const y = (left.y + right.y) / 2;
   const eyeSpan = distance(leftCorners, rightCorners);
   const extension = eyeSpan * 0.16;
 
-  const start = {
-    x: Math.max(0, rightCorners.x - extension),
-    y
-  };
-  const end = {
-    x: Math.min(1, leftCorners.x + extension),
-    y
-  };
+  const start = { x: Math.max(0, rightCorners.x - extension), y };
+  const end = { x: Math.min(1, leftCorners.x + extension), y };
 
   ctx.save();
   ctx.setLineDash([10, 8]);
@@ -102,7 +96,6 @@ function drawAdaptiveRuler(landmarks, left, right) {
   ctx.stroke();
   ctx.restore();
 
-  // Pequenas marcas verticais nas extremidades da régua.
   for (const p of [start, end]) {
     ctx.beginPath();
     ctx.moveTo(p.x * canvas.width, (p.y - 0.018) * canvas.height);
@@ -128,10 +121,6 @@ function onResults(res) {
   }
 
   const lm = res.multiFaceLandmarks[0];
-
-  // 468 = centro da íris direita; 473 = centro da íris esquerda.
-  // Esses dois landmarks acompanham diretamente as pupilas/íris,
-  // independentemente do tamanho do rosto na câmera.
   const rawRight = point(lm, RIGHT_IRIS_CENTER);
   const rawLeft = point(lm, LEFT_IRIS_CENTER);
 
@@ -155,9 +144,6 @@ function onResults(res) {
 
   liveState.textContent = "Pupilas detectadas";
   statusDot.classList.add("active");
-
-  // Nesta fase mostramos a distância na imagem em pixels.
-  // A calibração milimétrica será implementada na próxima etapa.
   odEl.textContent = "OK";
   oeEl.textContent = "OK";
   dnpEl.textContent = Math.round(px) + " px";
@@ -176,36 +162,111 @@ faceMesh.setOptions({
 
 faceMesh.onResults(onResults);
 
+async function openCamera() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    throw new Error("Este navegador não disponibiliza acesso à câmera.");
+  }
+
+  stopCamera();
+
+  const constraints = {
+    audio: false,
+    video: {
+      facingMode: { ideal: cameraFacing },
+      width: { ideal: 1280 },
+      height: { ideal: 720 }
+    }
+  };
+
+  try {
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+  } catch (err) {
+    // Alguns aparelhos não aceitam facingMode ideal; tenta uma configuração simples.
+    stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
+  }
+
+  video.srcObject = stream;
+  await video.play();
+
+  cameraStatus.textContent =
+    cameraFacing === "user" ? "Câmera frontal selecionada" : "Câmera traseira selecionada";
+
+  statusDot.classList.add("active");
+}
+
+function stopCamera() {
+  if (stream) {
+    stream.getTracks().forEach(track => track.stop());
+    stream = null;
+  }
+  video.srcObject = null;
+}
+
+async function processFrame() {
+  if (!running) return;
+  if (video.readyState >= 2) {
+    try {
+      await faceMesh.send({ image: video });
+    } catch (err) {
+      console.error("Erro no processamento da câmera:", err);
+    }
+  }
+  requestAnimationFrame(processFrame);
+}
+
+async function selectCamera(facing) {
+  cameraFacing = facing;
+  frontBtn.classList.toggle("active", facing === "user");
+  rearBtn.classList.toggle("active", facing === "environment");
+
+  if (!stream) {
+    cameraStatus.textContent =
+      facing === "user" ? "Câmera frontal selecionada" : "Câmera traseira selecionada";
+    return;
+  }
+
+  liveState.textContent = "Trocando câmera…";
+
+  try {
+    await openCamera();
+    liveState.textContent = "Câmera ativa — centralize o rosto";
+  } catch (err) {
+    console.error(err);
+    liveState.textContent = "Não foi possível abrir esta câmera.";
+    alert("Não foi possível acessar a câmera selecionada. Verifique as permissões do navegador.");
+  }
+}
+
 async function start() {
   try {
     intro.classList.add("hidden");
     viewer.classList.remove("hidden");
     results.classList.remove("hidden");
     instructions.classList.remove("hidden");
+    cameraControls.classList.remove("hidden");
 
-    camera = new Camera(video, {
-      onFrame: async () => await faceMesh.send({ image: video }),
-      width: 720,
-      height: 960
-    });
+    await openCamera();
 
-    await camera.start();
-    statusDot.classList.add("active");
+    running = true;
+    processFrame();
+    liveState.textContent = "Câmera ativa — centralize o rosto";
   } catch (err) {
     console.error(err);
+    running = false;
     liveState.textContent = "Não foi possível acessar a câmera.";
-    alert("Permita o acesso à câmera e tente novamente.");
+    alert("Permita o acesso à câmera no navegador. Se já permitiu, recarregue a página e tente novamente.");
   }
 }
 
 function reset() {
-  if (camera) camera.stop();
-  video.srcObject = null;
+  running = false;
+  stopCamera();
   canvas.width = 1;
   canvas.height = 1;
   ctx.clearRect(0,0,1,1);
   results.classList.add("hidden");
   viewer.classList.add("hidden");
+  cameraControls.classList.add("hidden");
   instructions.classList.add("hidden");
   intro.classList.remove("hidden");
   statusDot.classList.remove("active");
@@ -214,5 +275,7 @@ function reset() {
   smoothRight = null;
 }
 
+frontBtn.addEventListener("click", () => selectCamera("user"));
+rearBtn.addEventListener("click", () => selectCamera("environment"));
 startBtn.addEventListener("click", start);
 resetBtn.addEventListener("click", reset);
