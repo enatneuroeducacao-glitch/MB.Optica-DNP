@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#06101d">
 <title>MB.Óptica DNP • Biometria Facial</title>
-<link rel="stylesheet" href="./style.css?v=20260927-22">
+<link rel="stylesheet" href="./style.css?v=20260927-23">
 </head>
 <body>
 <main class="app">
@@ -14,11 +14,11 @@
 <nav class="steps"><div class="step active"><b>1</b>Captura facial</div><div class="step"><b>2</b>Mapa biométrico</div><div class="step"><b>3</b>DNP</div><div class="step"><b>4</b>O.S.</div></nav>
 
 <section id="intro" class="card intro">
-<div class="eyebrow">MB DNP • FACE BIOMETRIC ENGINE v22</div>
+<div class="eyebrow">MB DNP • FACE BIOMETRIC ENGINE v23</div>
 <h1>Leitura facial da DNP</h1>
 <p>O rosto é a referência. O sistema mapeia a geometria facial, olhos, íris e ponte nasal em vídeo contínuo. A escala métrica é derivada do modelo facial 3D do MediaPipe, sem quadro de calibração.</p>
 <div class="feature-grid"><div><strong>Mapa facial 3D</strong><span>468 pontos + íris refinada</span></div><div><strong>Modelo métrico</strong><span>transformação facial e escala individual</span></div><div><strong>Estabilidade</strong><span>24 quadros para validar a leitura</span></div></div>
-<div class="notice"><strong>Nota técnica</strong><span>A escala do modelo facial é uma estimativa e depende da câmera virtual configurada. A primeira versão deve ser comparada com pupilômetro antes do uso profissional.</span></div>
+<div class="notice"><strong>Nota técnica</strong><span>A escala métrica usa o diâmetro aparente da íris como referência biométrica. A primeira versão deve ser comparada com pupilômetro antes do uso profissional.</span></div>
 <button id="startBtn" class="primary">Iniciar biometria facial</button>
 </section>
 
@@ -33,7 +33,7 @@
 <div class="camera-buttons"><button id="frontBtn" class="camera-btn active">Câmera frontal</button><button id="rearBtn" class="camera-btn">Câmera traseira</button></div><div id="cameraStatus" class="camera-status">Aguardando início.</div></section>
 
 <section class="card biometric-panel"><div class="section-title-row"><div><div class="eyebrow">MAPA BIOMÉTRICO</div><h2>Geometria facial</h2></div><span id="faceState" class="pill">Aguardando</span></div>
-<div class="biometric-grid"><div><span>Face</span><strong id="faceMetric">—</strong></div><div><span>Pose</span><strong id="poseMetric">—</strong></div><div><span>Escala 3D</span><strong id="scaleMetric">—</strong></div><div><span>Estabilidade</span><strong id="stabilityMetric">—</strong></div></div>
+<div class="biometric-grid"><div><span>Face</span><strong id="faceMetric">—</strong></div><div><span>Pose</span><strong id="poseMetric">—</strong></div><div><span>Escala biométrica</span><strong id="scaleMetric">—</strong></div><div><span>Estabilidade</span><strong id="stabilityMetric">—</strong></div></div>
 <div class="anatomy"><div><span>Íris OD</span><strong id="rightMetric">—</strong></div><div><span>Ponte nasal</span><strong id="noseMetric">—</strong></div><div><span>Íris OE</span><strong id="leftMetric">—</strong></div></div>
 <div class="biometric-note" id="biometricNote">O sistema está procurando a geometria facial.</div></section>
 
@@ -53,5 +53,5 @@
 </section>
 <footer>MB.Óptica DNP • motor de biometria facial • validar contra instrumento de referência antes do uso profissional</footer>
 </main>
-<script type="module" src="./app.js?v=20260927-22"></script>
+<script type="module" src="./app.js?v=20260927-23"></script>
 </body></html>
