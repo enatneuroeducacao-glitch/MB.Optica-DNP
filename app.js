@@ -13,7 +13,7 @@ let cameraFacing="user",currentGeometry=null,currentScale=null,currentOs=null;
 const STABLE_FRAMES=24;
 const RIGHT_IRIS=468,LEFT_IRIS=473,NASAL=168,RIGHT_OUTER=33,LEFT_OUTER=263,FACE_LEFT=234,FACE_RIGHT=454,FACE_TOP=10,FACE_BOTTOM=152;
 const CANONICAL_EYE_OUTER_CM=8.891718;
-const STORE_KEY="mb_dnp_facial_biometric_v21";
+const STORE_KEY="mb_dnp_facial_biometric_v22";
 
 function getView(){const r=viewer.getBoundingClientRect();return{w:r.width,h:r.height}}
 function resize(){const s=getView(),d=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(s.w*d);canvas.height=Math.round(s.h*d);canvas.style.width=s.w+"px";canvas.style.height=s.h+"px";ctx.setTransform(d,0,0,d,0,0)}
@@ -40,7 +40,7 @@ function geometryFromResult(result){
  const fl=vp(lm[FACE_LEFT]),fr=vp(lm[FACE_RIGHT]),ft=vp(lm[FACE_TOP]),fb=vp(lm[FACE_BOTTOM]);
  if([r,l,ro,lo,n,fl,fr,ft,fb].some(p=>!p))return null;
  const axis={x:l.x-r.x,y:l.y-r.y},axisLen=Math.hypot(axis.x,axis.y)||1,u={x:axis.x/axisLen,y:axis.y/axisLen};
- const roll=Math.atan2(axis.y,axis.x)*180/Math.PI;
+ const roll=Math.atan2(axis.y,Math.abs(axis.x))*180/Math.PI;
  const mid={x:(r.x+l.x)/2,y:(r.y+l.y)/2};
  const faceWidth=dist(fl,fr),faceHeight=dist(ft,fb),eyeOuterPx=dist(ro,lo);
  const scale=matrixScale(matrix);
