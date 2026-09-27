@@ -389,3 +389,20 @@ button{cursor:pointer}
   letter-spacing:.35px;white-space:nowrap;pointer-events:none;
 }
 .input-suffix input[readonly]{color:#8fdcff;cursor:default}
+
+/* Campo biométrico horizontal — apenas olhos + ponte */
+.face-guide{
+  inset:30% 7% 31%;
+  border:2px dashed rgba(255,255,255,.42);
+  border-radius:20px;
+  padding:0 7%;
+  justify-content:center;
+  background:linear-gradient(90deg,transparent 0 8%,rgba(85,214,255,.035) 8% 92%,transparent 92%);
+}
+.face-guide:before{
+  content:"";
+  position:absolute;left:50%;top:9%;bottom:9%;
+  width:1px;background:rgba(255,204,102,.28);
+}
+.guide-title{font-size:13px}
+.guide-subtitle{font-size:10px}
