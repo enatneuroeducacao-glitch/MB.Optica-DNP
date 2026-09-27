@@ -5,21 +5,21 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#06101d">
 <title>MB.Óptica DNP • Biometria Facial</title>
-<link rel="stylesheet" href="./style.css?v=20260927-23">
+<link rel="stylesheet" href="./style.css?v=20260927-24">
 </head>
 <body>
 <main class="app">
-<header class="topbar"><div><div class="brand">MB.Óptica</div><div class="subtitle">DNP • biometria facial</div></div><div class="header-actions"><span id="statusDot" class="status-dot"></span><button id="settingsBtn" class="icon-btn">⚙</button></div></header>
+<header class="topbar"><div><div class="brand">MB.Óptica</div><div class="subtitle">DNP • biometria facial</div></div><div class="header-actions"><span id="statusDot" class="status-dot"></span><button id="settingsBtn" class="icon-btn" type="button">⚙</button></div></header>
 
 <nav class="steps"><div class="step active"><b>1</b>Captura facial</div><div class="step"><b>2</b>Mapa biométrico</div><div class="step"><b>3</b>DNP</div><div class="step"><b>4</b>O.S.</div></nav>
 
 <section id="intro" class="card intro">
-<div class="eyebrow">MB DNP • FACE BIOMETRIC ENGINE v23</div>
+<div class="eyebrow">MB DNP • FACE BIOMETRIC ENGINE v24</div>
 <h1>Leitura facial da DNP</h1>
-<p>O rosto é a referência. O sistema mapeia a geometria facial, olhos, íris e ponte nasal em vídeo contínuo. A escala métrica é derivada do modelo facial 3D do MediaPipe, sem quadro de calibração.</p>
-<div class="feature-grid"><div><strong>Mapa facial 3D</strong><span>468 pontos + íris refinada</span></div><div><strong>Modelo métrico</strong><span>transformação facial e escala individual</span></div><div><strong>Estabilidade</strong><span>24 quadros para validar a leitura</span></div></div>
+<p>O rosto é a referência. O sistema mapeia a geometria facial, olhos, íris e ponte nasal em vídeo contínuo. A escala métrica é derivada da referência biométrica da íris, sem quadro de calibração.</p>
+<div class="feature-grid"><div><strong>Mapa facial 3D</strong><span>468 pontos + íris refinada</span></div><div><strong>Modelo métrico</strong><span>geometria facial e escala biométrica</span></div><div><strong>Estabilidade</strong><span>24 quadros para validar a leitura</span></div></div>
 <div class="notice"><strong>Nota técnica</strong><span>A escala métrica usa o diâmetro aparente da íris como referência biométrica. A primeira versão deve ser comparada com pupilômetro antes do uso profissional.</span></div>
-<button id="startBtn" class="primary">Iniciar biometria facial</button>
+<button id="startBtn" class="primary" type="button">Iniciar biometria facial</button>
 </section>
 
 <section id="workspace" class="workspace hidden">
@@ -30,7 +30,7 @@
 </div>
 
 <section class="card camera-panel"><div class="section-title-row"><div><div class="eyebrow">CAPTURA</div><h2>Biometria facial</h2></div><span id="cameraQuality" class="pill">Aguardando</span></div>
-<div class="camera-buttons"><button id="frontBtn" class="camera-btn active">Câmera frontal</button><button id="rearBtn" class="camera-btn">Câmera traseira</button></div><div id="cameraStatus" class="camera-status">Aguardando início.</div></section>
+<div class="camera-buttons"><button id="frontBtn" class="camera-btn active" type="button">Câmera frontal</button><button id="rearBtn" class="camera-btn" type="button">Câmera traseira</button></div><div id="cameraStatus" class="camera-status">Aguardando início.</div></section>
 
 <section class="card biometric-panel"><div class="section-title-row"><div><div class="eyebrow">MAPA BIOMÉTRICO</div><h2>Geometria facial</h2></div><span id="faceState" class="pill">Aguardando</span></div>
 <div class="biometric-grid"><div><span>Face</span><strong id="faceMetric">—</strong></div><div><span>Pose</span><strong id="poseMetric">—</strong></div><div><span>Escala biométrica</span><strong id="scaleMetric">—</strong></div><div><span>Estabilidade</span><strong id="stabilityMetric">—</strong></div></div>
@@ -41,17 +41,17 @@
 <div class="measure-grid"><div class="measure"><span>OD</span><strong id="od">—</strong><small>pupila → referência nasal</small></div><div class="measure"><span>OE</span><strong id="oe">—</strong><small>referência nasal → pupila</small></div><div class="measure total"><span>DNP</span><strong id="dnp">—</strong><small>binocular</small></div></div>
 <div class="reading-meta"><span id="readingCount">0/24 quadros</span><span id="readingNote">Aguardando mapa facial</span></div>
 <div class="zero-info"><b>REFERÊNCIA NASAL</b><span>landmark facial automático • sem ajuste manual</span><strong id="zeroMetric">—</strong></div>
-<div class="button-row"><button id="newReadingBtn" class="secondary">Nova leitura</button><button id="useReadingBtn" class="primary small" disabled>Usar esta DNP</button></div></section>
+<div class="button-row"><button id="newReadingBtn" class="secondary" type="button">Nova leitura</button><button id="useReadingBtn" class="primary small" type="button" disabled>Usar esta DNP</button></div></section>
 
 <section id="osPanel" class="card os-panel hidden"><div class="section-title-row"><div><div class="eyebrow">ORDEM DE SERVIÇO</div><h2>Cliente e O.S.</h2></div><span class="pill green">Pronto</span></div>
 <p class="helper">A medição facial é anexada à O.S. local. A estrutura fica preparada para futura integração com o MB Gestão Inteligente.</p>
 <div class="form-grid"><label class="full"><span>Cliente *</span><input id="customerName" placeholder="Nome completo"></label><label><span>Telefone</span><input id="customerPhone"></label><label><span>CPF</span><input id="customerCpf"></label><label><span>Nº da venda</span><input id="saleNumber"></label><label><span>Tipo</span><select id="customerType"><option>Adulto</option><option>Infantil</option></select></label><label class="full"><span>Observações</span><textarea id="customerNotes" rows="3"></textarea></label></div>
 <div class="os-preview"><div><span>O.S.</span><strong id="osNumber">Será gerada</strong></div><div><span>DNP</span><strong id="osDnp">—</strong></div><div><span>OD / OE</span><strong id="osMono">— / —</strong></div></div>
-<div class="button-row"><button id="saveDraftBtn" class="secondary">Salvar rascunho</button><button id="generateOsBtn" class="primary small">Gerar O.S.</button></div><div id="osValidation" class="validation hidden"></div></section>
+<div class="button-row"><button id="saveDraftBtn" class="secondary" type="button">Salvar rascunho</button><button id="generateOsBtn" class="primary small" type="button">Gerar O.S.</button></div><div id="osValidation" class="validation hidden"></div></section>
 
-<section id="savedPanel" class="card saved-panel hidden"><div class="success-mark">✓</div><div class="eyebrow">ATENDIMENTO REGISTRADO</div><h2 id="savedTitle">O.S. criada</h2><p id="savedSummary" class="helper"></p><div class="button-row"><button id="printBtn" class="secondary">Imprimir O.S.</button><button id="anotherBtn" class="primary small">Novo atendimento</button></div></section>
+<section id="savedPanel" class="card saved-panel hidden"><div class="success-mark">✓</div><div class="eyebrow">ATENDIMENTO REGISTRADO</div><h2 id="savedTitle">O.S. criada</h2><p id="savedSummary" class="helper"></p><div class="button-row"><button id="printBtn" class="secondary" type="button">Imprimir O.S.</button><button id="anotherBtn" class="primary small" type="button">Novo atendimento</button></div></section>
 </section>
 <footer>MB.Óptica DNP • motor de biometria facial • validar contra instrumento de referência antes do uso profissional</footer>
 </main>
-<script type="module" src="./app.js?v=20260927-23"></script>
+<script defer src="./app.js?v=20260927-24"></script>
 </body></html>
