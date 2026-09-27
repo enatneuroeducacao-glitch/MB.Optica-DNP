@@ -377,3 +377,15 @@ button{cursor:pointer}
   content:"";position:absolute;left:50%;top:50%;width:2px;height:62%;
   transform:translate(-50%,-50%);background:rgba(255,204,102,.22);pointer-events:none;z-index:7;
 }
+
+/* MB DNP v17 — referência física ID-1 */
+.calibration-overlay:before{
+  content:"CARTÃO DE REFERÊNCIA • ID-1 • 85,60 × 53,98 mm";
+  position:absolute;left:50%;top:18%;
+  transform:translateX(-50%);
+  padding:7px 11px;border:1px solid rgba(85,214,255,.42);
+  border-radius:10px;background:rgba(4,12,22,.76);
+  color:rgba(210,240,255,.9);font-size:9px;font-weight:800;
+  letter-spacing:.35px;white-space:nowrap;pointer-events:none;
+}
+.input-suffix input[readonly]{color:#8fdcff;cursor:default}
