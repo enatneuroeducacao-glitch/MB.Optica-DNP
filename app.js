@@ -12,10 +12,10 @@ const savedPanel=$("savedPanel"),savedTitle=$("savedTitle"),savedSummary=$("save
 let stream=null,running=false,faceLandmarker=null,lastVideoTime=-1,animationFrame=0,detectionTimer=0,currentReading=null,samples=[],lastTimestampMs=0,loopErrorCount=0,processedFrames=0,lastStatusUpdate=0,lastDetectAt=0,detectionBusy=false;
 let cameraFacing="user",currentGeometry=null,currentScale=null,currentOs=null;
 const STABLE_FRAMES=24;
-const RIGHT_IRIS=468,LEFT_IRIS=473,NASAL=168,RIGHT_OUTER=33,LEFT_OUTER=263,FACE_LEFT=234,FACE_RIGHT=454,FACE_TOP=10,FACE_BOTTOM=152;
-const RIGHT_IRIS_EDGES=[469,470,471,472],LEFT_IRIS_EDGES=[474,475,476,477];
+const OD_IRIS=473,OE_IRIS=468,NASAL=168,OD_OUTER=263,OE_OUTER=33,FACE_LEFT=234,FACE_RIGHT=454,FACE_TOP=10,FACE_BOTTOM=152;
+const OD_IRIS_EDGES=[474,475,476,477],OE_IRIS_EDGES=[469,470,471,472];
 const IRIS_DIAMETER_MM=11.7;
-const STORE_KEY="mb_dnp_facial_biometric_v29";
+const STORE_KEY="mb_dnp_facial_biometric_v30";
 
 function getView(){const r=viewer.getBoundingClientRect();return{w:r.width,h:r.height}}
 function resize(){const s=getView(),d=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(s.w*d);canvas.height=Math.round(s.h*d);canvas.style.width=s.w+"px";canvas.style.height=s.h+"px";ctx.setTransform(d,0,0,d,0,0)}
