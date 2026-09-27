@@ -5,6 +5,7 @@ const startBtn=$("startBtn"), frontBtn=$("frontBtn"), rearBtn=$("rearBtn");
 const statusDot=$("statusDot"), workspace=$("workspace"), intro=$("intro"), viewer=$("viewer");
 const calibrationOverlay=$("calibrationOverlay"), calibrationPanel=$("calibrationPanel");
 const measurementPanel=$("measurementPanel"), osPanel=$("osPanel"), savedPanel=$("savedPanel"), settingsPanel=$("settingsPanel");
+const cameraControls=document.querySelector(".camera-controls");
 const referenceMmEl=$("referenceMm"), referenceHeightMmEl=$("referenceHeightMm"), scaleValue=$("scaleValue");
 const calibrationState=$("calibrationState"), calibrationValidation=$("calibrationValidation");
 const measurementState=$("measurementState"), faceState=$("faceState"), stabilityState=$("stabilityState");
