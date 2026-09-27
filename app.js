@@ -19,7 +19,7 @@ const osNumber=$("osNumber"), osDnp=$("osDnp"), osMono=$("osMono"), osValidation
 
 let stream=null,running=false,cameraFacing="user",animationFrame=null;
 const roiCanvas=document.createElement("canvas"),roiCtx=roiCanvas.getContext("2d");
-const ROI_ZOOM=1.35; // aproxima digitalmente a região dos óculos sem alterar a calibração métrica
+const ROI_ZOOM=1.55; // zoom do campo óptico; a escala métrica continua vindo da referência física
 
 let calibration=null,nasalPoint={x:0,y:0},nasalConfirmed=false,dragHandle=null,nasalDragging=false;
 let samples=[],stableReading=null,selectedReading=null;
@@ -139,29 +139,7 @@ function applyH(H,p){
 }
 function renderMeasurementRuler(){
   if(!measurementRuler)return;
-  const s=getViewSize();
-  const ticks=[];
-  const step=2.5;
-  let maxMm=22.5;
-  // Escala visual baseada no plano calibrado. O zero fica no centro da janela.
-  let pxPerMm=(s.width*.78)/(calibration?.widthMm||85.6);
-  if(calibration){
-    const pts=["tl","tr","br","bl"].map(k=>calibrationPoints[k]);
-    const top=distance(pts[0],pts[1]),bottom=distance(pts[3],pts[2]);
-    const avg=(top+bottom)/2;
-    if(Number.isFinite(avg)&&avg>0)pxPerMm=avg/(calibration.widthMm||85.6);
-  }
-  const center=s.width/2;
-  const referenceWidthMm=Number(calibration?.widthMm||45);
-  maxMm=referenceWidthMm/2;
-  for(let mm=-maxMm;mm<=maxMm+0.001;mm+=step){
-    const x=center+mm*pxPerMm;
-    if(x<0||x>s.width)continue;
-    const major=mm===0||Math.abs(mm)%10===0||Math.abs(Math.abs(mm)-maxMm)<0.001;
-    ticks.push('<span class="ruler-tick '+(major?'major':'')+'" style="left:'+x.toFixed(1)+'px"></span>');
-    if(major)ticks.push('<span class="ruler-label" style="left:'+x.toFixed(1)+'px">'+(mm===0?'0':Math.abs(mm))+'</span>');
-  }
-  measurementRuler.innerHTML='<div class="ruler-line"></div>'+ticks.join('')+'<div class="ruler-zero">0</div><div class="ruler-title">−'+referenceWidthMm/2+' mm | 0 | +'+referenceWidthMm/2+' mm</div>';
+  measurementRuler.innerHTML='<div class="ruler-mode-label">RÉGUA MONOCULAR • PONTE → PUPILA</div>';
 }
 
 function setCalibration(){
@@ -179,7 +157,7 @@ function setCalibration(){
   localStorage.setItem("mbDnpCalibration",JSON.stringify(calibration));
   localStorage.setItem("mbDnpCalibrationLabel",new Date().toLocaleString("pt-BR"));
   calibrationState.textContent="Plano métrico";calibrationState.className="pill green";
-  calibrationValidation.textContent="Plano calibrado com 4 pontos e correção de perspectiva. Agora o ponto 0 será confirmado na ponte da armação.";
+  calibrationValidation.textContent="Plano métrico calibrado. Agora a tela muda para o enquadramento tipo armação; o ponto 0 será confirmado na ponte.";
   calibrationValidation.className="validation ok";scaleValue.textContent=W.toFixed(1)+" × "+H.toFixed(2)+" mm • homografia OK";
   measurementPanel.classList.remove("hidden");workspace.classList.add("measurement-mode");calibrationPanel.classList.add("hidden");cameraControls.classList.add("hidden");calibrationOverlay.classList.add("hidden");nasalHandle.classList.remove("hidden");measurementRuler.classList.remove("hidden");renderMeasurementRuler();nasalConfirmed=false;confirmNasalBtn.disabled=true;nasalReferenceValue.textContent="Posicione o marcador na ponte da armação";setStep(3);resetSamples();
   calibrationPanel.scrollIntoView({behavior:"smooth",block:"start"});
@@ -202,17 +180,57 @@ function drawPoint(p,color="#55d6ff"){
 function drawIris(lm,cid,rids){
   const cRaw=point(lm,cid);if(!cRaw)return null;
   const c=toViewPoint(cRaw);
-  // Marcador de pupila compacto: o raio real do limbo não é desenhado
-  // como cursor, para não confundir o operador com uma área de medição.
-  ctx.beginPath();ctx.arc(c.x,c.y,9,0,Math.PI*2);
-  ctx.strokeStyle="rgba(255,255,255,.95)";ctx.lineWidth=2;ctx.stroke();
+  // Cursor compacto: centro + pequena cruz, sem círculos grandes.
   ctx.beginPath();ctx.arc(c.x,c.y,3.5,0,Math.PI*2);
   ctx.fillStyle="#55d6ff";ctx.fill();
   ctx.beginPath();
-  ctx.moveTo(c.x-13,c.y);ctx.lineTo(c.x+13,c.y);
-  ctx.moveTo(c.x,c.y-13);ctx.lineTo(c.x,c.y+13);
-  ctx.strokeStyle="rgba(85,214,255,.9)";ctx.lineWidth=1.5;ctx.stroke();
+  ctx.moveTo(c.x-11,c.y);ctx.lineTo(c.x+11,c.y);
+  ctx.moveTo(c.x,c.y-11);ctx.lineTo(c.x,c.y+11);
+  ctx.strokeStyle="rgba(255,255,255,.95)";ctx.lineWidth=1.8;ctx.stroke();
+  ctx.beginPath();ctx.arc(c.x,c.y,7,0,Math.PI*2);
+  ctx.strokeStyle="rgba(85,214,255,.72)";ctx.lineWidth=1.5;ctx.stroke();
   return c
+}
+function drawLensFrame(center,label,side){
+  const w=170,h=112;
+  const x=center.x+(side==="OD"?-w-18:18),y=center.y-h/2;
+  const radius=28;
+  ctx.save();
+  ctx.strokeStyle="rgba(85,214,255,.78)";ctx.lineWidth=2;
+  ctx.fillStyle="rgba(85,214,255,.045)";
+  ctx.beginPath();ctx.roundRect(x,y,w,h,radius);ctx.fill();ctx.stroke();
+  ctx.font="800 10px system-ui";ctx.fillStyle="rgba(225,246,255,.92)";
+  ctx.fillText(label,x+12,y+18);
+  ctx.restore();
+  return{x,y,w,h}
+}
+function drawMetricLine(a,b,label,value,side){
+  const y=a.y+(b.y-a.y)*0.62;
+  const x1=a.x,x2=b.x;
+  ctx.save();
+  ctx.strokeStyle="rgba(255,204,102,.92)";ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(x1,y);ctx.lineTo(x2,y);ctx.stroke();
+  [x1,x2].forEach(x=>{ctx.beginPath();ctx.moveTo(x,y-6);ctx.lineTo(x,y+6);ctx.stroke()});
+  ctx.font="800 9px system-ui";ctx.fillStyle="#ffdf8a";
+  ctx.textAlign=side==="OD"?"right":"left";
+  ctx.fillText(label+"  "+value.toFixed(1)+" mm",(x1+x2)/2,y-8);
+  ctx.restore();
+}
+function drawMeasurementGuides(rv,lv,nasal){
+  const s=getViewSize();
+  const odMm=Math.abs(applyH(calibration.homography,nasal).x-applyH(calibration.homography,rv).x);
+  const oeMm=Math.abs(applyH(calibration.homography,lv).x-applyH(calibration.homography,nasal).x);
+  // Quadros visuais lembram a armação; a régua é calculada do ponto 0 até cada pupila.
+  drawLensFrame(rv,"OD • LENTE DIREITA","OD");
+  drawLensFrame(lv,"OE • LENTE ESQUERDA","OE");
+  drawMetricLine(nasal,rv,"OD",odMm,"OD");
+  drawMetricLine(nasal,lv,"OE",oeMm,"OE");
+  ctx.save();
+  ctx.strokeStyle="rgba(255,204,102,.95)";ctx.lineWidth=3;
+  ctx.beginPath();ctx.moveTo(nasal.x,nasal.y-24);ctx.lineTo(nasal.x,nasal.y+24);ctx.stroke();
+  ctx.font="900 10px system-ui";ctx.fillStyle="#ffdf8a";ctx.textAlign="center";
+  ctx.fillText("0 • PONTE",nasal.x,nasal.y+38);
+  ctx.restore();
 }
 function drawContour(lm,ids){const pts=ids.map(id=>point(lm,id)).filter(Boolean).map(toViewPoint);if(pts.length<2)return;ctx.beginPath();ctx.moveTo(pts[0].x,pts[0].y);pts.slice(1).forEach(p=>ctx.lineTo(p.x,p.y));ctx.strokeStyle="rgba(255,255,255,.55)";ctx.lineWidth=1.2;ctx.stroke()}
 function drawLabel(t,p){ctx.font="800 11px system-ui";ctx.fillStyle="#fff";ctx.strokeStyle="rgba(0,0,0,.75)";ctx.lineWidth=3;ctx.strokeText(t,p.x+9,p.y-10);ctx.fillText(t,p.x+9,p.y-10)}
@@ -227,8 +245,10 @@ function addSample(lm,right,left,nasalView){
   const nasal=applyH(calibration.homography,nasalView);
   const r=applyH(calibration.homography,rv),l=applyH(calibration.homography,lv);
   /* Ponto 0 é a posição confirmada da ponte; OD/OE são distâncias horizontais a partir dele. */
-  const od=Math.abs(nasal.x-r.x),oe=Math.abs(l.x-nasal.x),dnp=od+oe;
-  if(![od,oe,dnp].every(Number.isFinite))return;
+  const od=nasal.x-r.x,oe=l.x-nasal.x,dnp=od+oe;
+  // Para uma leitura válida, a ponte precisa ficar entre as duas pupilas.
+  if(!(r.x<nasal.x&&nasal.x<l.x))return;
+  if(![od,oe,dnp].every(Number.isFinite)||od<0||oe<0||dnp<=0)return;
   samples.push({odMm:od,oeMm:oe,dnpMm:dnp,nasalX:nasal.x});if(samples.length>STABLE_FRAMES)samples.shift();
   readingCount.textContent=samples.length+"/"+STABLE_FRAMES+" frames";
   if(samples.length<STABLE_FRAMES){measurementState.textContent="Estabilizando";measurementState.className="pill";stabilityState.textContent=Math.round(samples.length/STABLE_FRAMES*100)+"%";readingNote.textContent="Mantenha o rosto imóvel";useReadingBtn.disabled=true;return}
@@ -259,8 +279,8 @@ function onResults(res){
   faceState.textContent="Detectado";alignmentState.textContent=align.good?"Alinhado":"Ajustar ("+align.roll.toFixed(1)+"°)";statusDot.classList.add("active");
   if(calibration&&align.good){
     if(!nasalConfirmed){measurementState.textContent="Confirme o ponto 0";readingNote.textContent="Arraste o marcador até o local exato onde a ponte da armação apoia";return;}
-    ctx.beginPath();ctx.moveTo(rv.x,rv.y);ctx.lineTo(nasalPoint.x,nasalPoint.y);ctx.lineTo(lv.x,lv.y);ctx.strokeStyle="rgba(85,214,255,.58)";ctx.lineWidth=1.5;ctx.stroke();
-    ctx.beginPath();ctx.moveTo(nasalPoint.x,nasalPoint.y-20);ctx.lineTo(nasalPoint.x,nasalPoint.y+20);ctx.strokeStyle="#ffcc66";ctx.lineWidth=3;ctx.stroke();drawLabel("0 • PONTE",nasalPoint);
+    ctx.beginPath();ctx.moveTo(rv.x,rv.y);ctx.lineTo(nasalPoint.x,nasalPoint.y);ctx.lineTo(lv.x,lv.y);ctx.strokeStyle="rgba(85,214,255,.35)";ctx.lineWidth=1.5;ctx.stroke();
+    drawMeasurementGuides(rv,lv,nasalPoint);
     nasalReferenceValue.textContent=nasalConfirmed?"0,0 mm • ponto fixado na ponte":"Confirme o ponto 0";
     addSample(lm,right,left,nasalPoint)
   }else if(!calibration){measurementState.textContent="Calibre primeiro";readingNote.textContent="Conclua o plano métrico de 4 pontos"}
