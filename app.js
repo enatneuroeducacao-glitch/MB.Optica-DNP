@@ -1,4 +1,4 @@
-window.__MB_DNP_V32__=true;
+window.__MB_DNP_V33__=true;
 const $=id=>document.getElementById(id);
 const el={
   intro:$('intro'),workspace:$('workspace'),start:$('startBtn'),startError:$('startError'),statusDot:$('statusDot'),settings:$('settingsBtn'),
@@ -10,10 +10,10 @@ const el={
 };
 const ctx=el.canvas.getContext('2d');
 const CFG={
-  version:'32',stableFrames:24,detectEveryMs:110,
+  version:'33',stableFrames:24,detectEveryMs:110,
   odIris:473,oeIris:468,nasal:168,odOuter:263,oeOuter:33,faceLeft:234,faceRight:454,faceTop:10,faceBottom:152,
   odIrisEdges:[474,475,476,477],oeIrisEdges:[469,470,471,472],irisMm:11.7,canonicalEyeMm:88.91718,
-  storeKey:'mb_dnp_facial_biometric_v32'
+  storeKey:'mb_dnp_facial_biometric_v33'
 };
 const state={engine:null,stream:null,running:false,busy:false,raf:0,lastDetectAt:0,timestamp:0,facing:'user',samples:[],reading:null,os:null,errorCount:0};
 
@@ -94,7 +94,7 @@ function updateBiometric(g){
 async function loadEngine(){
   if(state.engine)return;
   const {FilesetResolver,FaceLandmarker}=await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/vision_bundle.mjs');
-  const vision=await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm');
+  const vision=await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm');
   const common={runningMode:'VIDEO',numFaces:1,outputFaceBlendshapes:false,outputFacialTransformationMatrixes:true,minFaceDetectionConfidence:.55,minFacePresenceConfidence:.55,minTrackingConfidence:.55};
   const model='https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
   try{state.engine=await FaceLandmarker.createFromOptions(vision,{baseOptions:{modelAssetPath:model,delegate:'GPU'},...common})}
@@ -156,7 +156,7 @@ function escapeHtml(value){return String(value??'').replace(/[&<>'\"]/g,ch=>({'&
 function buildOS(status='rascunho'){
   if(!state.reading)return null;
   const existing=state.os||{};
-  return{id:existing.id||crypto.randomUUID?.()||String(Date.now()),number:existing.number||osNumber(),status,schema:'MB.Optica.DNP.OS.v32',createdAt:existing.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString(),customer:{name:el.name.value.trim(),phone:el.phone.value.trim(),cpf:el.cpf.value.trim(),saleNumber:el.sale.value.trim(),type:el.type.value,notes:el.notes.value.trim()},measurement:{method:state.reading.method,odMm:state.reading.od,oeMm:state.reading.oe,dnpMm:state.reading.dnp,frames:state.reading.frames,stabilityMm:state.reading.spread,scaleMmPerPx:state.reading.scale,pose:{roll:state.reading.roll,yaw:state.reading.yaw},nasalLandmark:CFG.nasal}};
+  return{id:existing.id||crypto.randomUUID?.()||String(Date.now()),number:existing.number||osNumber(),status,schema:'MB.Optica.DNP.OS.v33',createdAt:existing.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString(),customer:{name:el.name.value.trim(),phone:el.phone.value.trim(),cpf:el.cpf.value.trim(),saleNumber:el.sale.value.trim(),type:el.type.value,notes:el.notes.value.trim()},measurement:{method:state.reading.method,odMm:state.reading.od,oeMm:state.reading.oe,dnpMm:state.reading.dnp,frames:state.reading.frames,stabilityMm:state.reading.spread,scaleMmPerPx:state.reading.scale,pose:{roll:state.reading.roll,yaw:state.reading.yaw},nasalLandmark:CFG.nasal}};
 }
 function persistOS(status){const os=buildOS(status);if(!os)return null;const list=JSON.parse(localStorage.getItem(CFG.storeKey)||'[]');const index=list.findIndex(item=>item.id===os.id);if(index>=0)list[index]=os;else list.push(os);localStorage.setItem(CFG.storeKey,JSON.stringify(list));state.os=os;return os}
 function validateCustomer(){if(!el.name.value.trim()){el.osValidation.textContent='Informe o nome do cliente.';el.osValidation.className='validation error';el.osValidation.classList.remove('hidden');el.name.focus();return false}el.osValidation.className='validation hidden';return true}
@@ -169,6 +169,6 @@ el.saveDraft.addEventListener('click',()=>{if(!validateCustomer())return;const o
 el.generate.addEventListener('click',()=>{if(!validateCustomer())return;const os=persistOS('gerada');el.osNumber.textContent=os.number;el.savedTitle.textContent='O.S. '+os.number;el.savedSummary.textContent=os.customer.name+' • DNP '+os.measurement.dnpMm.toFixed(1)+' mm • OD '+os.measurement.odMm.toFixed(1)+' mm • OE '+os.measurement.oeMm.toFixed(1)+' mm.';el.osPanel.classList.add('hidden');el.saved.classList.remove('hidden');el.saved.scrollIntoView({behavior:'smooth',block:'start'});setStep(4)});
 el.print.addEventListener('click',()=>{if(!state.os)return;const os=state.os,m=os.measurement,c=os.customer,w=window.open('','_blank','width=800,height=700');if(!w)return;w.document.write('<!doctype html><html><head><title>'+escapeHtml(os.number)+'</title><style>body{font-family:Arial;padding:32px;color:#111}.box{border:1px solid #aaa;padding:16px;margin:12px 0}.big{font-size:28px;font-weight:800}</style></head><body><h1>MB.Óptica — O.S.</h1><div>'+escapeHtml(os.number)+'</div><div class="box"><b>Cliente</b><br>'+escapeHtml(c.name)+'<br>'+escapeHtml(c.phone)+' '+escapeHtml(c.cpf)+'</div><div class="box"><b>Leitura facial</b><div class="big">DNP '+m.dnpMm.toFixed(1)+' mm</div>OD '+m.odMm.toFixed(1)+' mm • OE '+m.oeMm.toFixed(1)+' mm</div><div class="box">Método: Face Landmarker + escala combinada de íris/face • '+m.frames+' quadros • referência nasal automática (landmark '+m.nasalLandmark+')</div></body></html>');w.document.close();w.focus();w.print()});
 el.another.addEventListener('click',()=>{stopCamera();location.reload()});
-el.settings.addEventListener('click',()=>alert('MB DNP v31\n\nLeitura facial local com MediaPipe Face Landmarker.\nNenhuma imagem do rosto é salva pelo aplicativo.\nOs dados da O.S. ficam no armazenamento local deste dispositivo.\n\nA medição deve ser validada contra instrumento de referência antes do uso profissional.'));
+el.settings.addEventListener('click',()=>alert('MB DNP v33\n\nLeitura facial local com MediaPipe Face Landmarker.\nNenhuma imagem do rosto é salva pelo aplicativo.\nOs dados da O.S. ficam no armazenamento local deste dispositivo.\n\nA medição deve ser validada contra instrumento de referência antes do uso profissional.'));
 window.addEventListener('beforeunload',stopCamera);
 resize();
