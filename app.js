@@ -139,8 +139,8 @@ function renderMeasurementRuler(){
   if(!measurementRuler)return;
   const s=getViewSize();
   const ticks=[];
-  const step=5;
-  const maxMm=40;
+  const step=2.5;
+  let maxMm=22.5;
   // Escala visual baseada no plano calibrado. O zero fica no centro da janela.
   let pxPerMm=(s.width*.78)/(calibration?.widthMm||85.6);
   if(calibration){
@@ -150,14 +150,16 @@ function renderMeasurementRuler(){
     if(Number.isFinite(avg)&&avg>0)pxPerMm=avg/(calibration.widthMm||85.6);
   }
   const center=s.width/2;
-  for(let mm=-maxMm;mm<=maxMm;mm+=step){
+  const referenceWidthMm=Number(calibration?.widthMm||45);
+  maxMm=referenceWidthMm/2;
+  for(let mm=-maxMm;mm<=maxMm+0.001;mm+=step){
     const x=center+mm*pxPerMm;
     if(x<0||x>s.width)continue;
     const major=mm%10===0;
     ticks.push('<span class="ruler-tick '+(major?'major':'')+'" style="left:'+x.toFixed(1)+'px"></span>');
     if(major)ticks.push('<span class="ruler-label" style="left:'+x.toFixed(1)+'px">'+(mm===0?'0':Math.abs(mm))+'</span>');
   }
-  measurementRuler.innerHTML='<div class="ruler-line"></div>'+ticks.join('')+'<div class="ruler-zero">0</div><div class="ruler-title">mm • eixo óptico</div>';
+  measurementRuler.innerHTML='<div class="ruler-line"></div>'+ticks.join('')+'<div class="ruler-zero">0</div><div class="ruler-title">−'+referenceWidthMm/2+' mm | 0 | +'+referenceWidthMm/2+' mm</div>';
 }
 \nfunction setCalibration(){
 
