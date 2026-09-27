@@ -361,3 +361,6 @@ button{cursor:pointer}
 @media(max-width:760px){
   .viewer video,.viewer canvas{transform:scaleX(-1) scale(1.35);}
 }
+
+/* Régua DNP: 45 mm físicos, simétrica em torno do zero. */
+.measurement-ruler .ruler-zero{left:50%}
