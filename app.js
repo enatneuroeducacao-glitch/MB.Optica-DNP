@@ -137,9 +137,81 @@ function applyH(H,p){
   const d=H[6]*p.x+H[7]*p.y+H[8],x=(H[0]*p.x+H[1]*p.y+H[2])/d,y=(H[3]*p.x+H[4]*p.y+H[5])/d;
   return{x,y}
 }
+function inverse3x3(m){
+  const a=m[0],b=m[1],c=m[2],d=m[3],e=m[4],f=m[5],g=m[6],h=m[7],i=m[8];
+  const A=e*i-f*h,B=c*h-b*i,C=b*f-c*e,D=f*g-d*i,E=a*i-c*g,F=c*d-a*f,G=d*h-e*g,H=b*g-a*h,I=a*e-b*d;
+  const det=a*A+b*D+c*G;
+  if(Math.abs(det)<1e-10)return null;
+  return [A/det,D/det,G/det,B/det,E/det,H/det,C/det,F/det,I/det]
+}
+function screenXForMetric(targetMm,yScreen,guessX){
+  if(!calibration?.homography)return null;
+  const Hinv=inverse3x3(calibration.homography);if(!Hinv)return null;
+  // O alvo é a coordenada X no plano métrico. Mantemos a altura da pupila
+  // e encontramos a posição correspondente na imagem por busca binária.
+  let lo=0,hi=getViewSize().width;
+  const f=x=>applyH(calibration.homography,{x,y:yScreen}).x-targetMm;
+  let flo=f(lo),fhi=f(hi);
+  if(!Number.isFinite(flo)||!Number.isFinite(fhi))return null;
+  // Em perspectiva extrema a função ainda pode não cruzar os extremos; usamos
+  // uma busca local em torno do ponto 0.
+  let center=Number.isFinite(guessX)?guessX:getViewSize().width/2;
+  let span=Math.max(40,getViewSize().width*.45);
+  lo=Math.max(0,center-span);hi=Math.min(getViewSize().width,center+span);
+  flo=f(lo);fhi=f(hi);
+  if(flo*fhi>0)return null;
+  for(let n=0;n<28;n++){
+    const mid=(lo+hi)/2,fm=f(mid);
+    if(Math.abs(fm)<0.0005)return mid;
+    if(flo*fm<=0){hi=mid;fhi=fm}else{lo=mid;flo=fm}
+  }
+  return (lo+hi)/2
+}
+function drawCalibratedRuler(nasalView, pupilY){
+  if(!calibration?.homography)return;
+  const s=getViewSize();
+  const nasalMetric=applyH(calibration.homography,nasalView);
+  const zeroX=nasalView.x, y=Math.max(24,Math.min(s.height-28,pupilY+48));
+  const maxEachSide=36;
+  const step=5;
+  ctx.save();
+  ctx.strokeStyle="rgba(225,242,255,.82)";ctx.lineWidth=1.2;
+  ctx.beginPath();ctx.moveTo(Math.max(12,zeroX-260),y);ctx.lineTo(Math.min(s.width-12,zeroX+260),y);ctx.stroke();
+
+  // 0 exatamente na ponte.
+  ctx.strokeStyle="#ffcc66";ctx.lineWidth=2.5;
+  ctx.beginPath();ctx.moveTo(zeroX,y-10);ctx.lineTo(zeroX,y+12);ctx.stroke();
+  ctx.fillStyle="#ffdf8a";ctx.font="900 9px system-ui";ctx.textAlign="center";
+  ctx.fillText("0 • PONTE",zeroX,y+25);
+
+  for(let mm=step;mm<=maxEachSide;mm+=step){
+    const xr=screenXForMetric(nasalMetric.x-mm,y,zeroX-mm*4);
+    const xl=screenXForMetric(nasalMetric.x+mm,y,zeroX+mm*4);
+    if(xr!=null&&xr>=8&&xr<=s.width-8){
+      const major=mm%10===0;
+      ctx.strokeStyle=major?"rgba(255,255,255,.95)":"rgba(225,242,255,.62)";
+      ctx.lineWidth=major?1.5:1;
+      ctx.beginPath();ctx.moveTo(xr,y-(major?9:5));ctx.lineTo(xr,y+(major?7:4));ctx.stroke();
+      ctx.fillStyle="rgba(225,242,255,.9)";ctx.font=major?"800 8px system-ui":"700 7px system-ui";ctx.textAlign="center";
+      ctx.fillText(mm,xr,y+18);
+    }
+    if(xl!=null&&xl>=8&&xl<=s.width-8){
+      const major=mm%10===0;
+      ctx.strokeStyle=major?"rgba(255,255,255,.95)":"rgba(225,242,255,.62)";
+      ctx.lineWidth=major?1.5:1;
+      ctx.beginPath();ctx.moveTo(xl,y-(major?9:5));ctx.lineTo(xl,y+(major?7:4));ctx.stroke();
+      ctx.fillStyle="rgba(225,242,255,.9)";ctx.font=major?"800 8px system-ui":"700 7px system-ui";ctx.textAlign="center";
+      ctx.fillText(mm,xl,y+18);
+    }
+  }
+  ctx.fillStyle="rgba(210,236,255,.68)";ctx.font="800 7px system-ui";
+  ctx.textAlign="left";ctx.fillText("OD • PONTE → PUPILA",Math.max(8,zeroX-250),y-13);
+  ctx.textAlign="right";ctx.fillText("PUPILA → PONTE • OE",Math.min(s.width-8,zeroX+250),y-13);
+  ctx.restore();
+}
 function renderMeasurementRuler(){
   if(!measurementRuler)return;
-  measurementRuler.innerHTML='<div class="ruler-mode-label">RÉGUA MONOCULAR • PONTE → PUPILA</div>';
+  measurementRuler.innerHTML='';
 }
 
 function setCalibration(){
@@ -274,7 +346,7 @@ function addSample(lm,right,left,nasalView){
 
 function onResults(res){
   const s=getViewSize();
-  if(!measurementRuler.classList.contains("hidden")&&calibration)renderMeasurementRuler();if(canvas.width!==Math.round(s.width)||canvas.height!==Math.round(s.height)){canvas.width=Math.round(s.width);canvas.height=Math.round(s.height)}
+  if(canvas.width!==Math.round(s.width)||canvas.height!==Math.round(s.height)){canvas.width=Math.round(s.width);canvas.height=Math.round(s.height)}
   // Canvas transparente: somente marcadores e guias são desenhados aqui.
   ctx.clearRect(0,0,canvas.width,canvas.height);
   if(!res.multiFaceLandmarks?.length){faceState.textContent="Não detectado";alignmentState.textContent="—";statusDot.classList.remove("active");measurementState.textContent=calibration?"Aguardando":"Calibre primeiro";readingNote.textContent="Centralize o rosto dentro da área";return}
@@ -292,6 +364,7 @@ function onResults(res){
     if(!nasalConfirmed){measurementState.textContent="Confirme o ponto 0";readingNote.textContent="Arraste o marcador até o local exato onde a ponte da armação apoia";return;}
     ctx.beginPath();ctx.moveTo(rv.x,rv.y);ctx.lineTo(nasalPoint.x,nasalPoint.y);ctx.lineTo(lv.x,lv.y);ctx.strokeStyle="rgba(85,214,255,.35)";ctx.lineWidth=1.5;ctx.stroke();
     drawMeasurementGuides(rv,lv,nasalPoint);
+    drawCalibratedRuler(nasalPoint,(rv.y+lv.y)/2);
     nasalReferenceValue.textContent=nasalConfirmed?"0,0 mm • ponto fixado na ponte":"Confirme o ponto 0";
     addSample(lm,right,left,nasalPoint)
   }else if(!calibration){measurementState.textContent="Calibre primeiro";readingNote.textContent="Conclua o plano métrico de 4 pontos"}
