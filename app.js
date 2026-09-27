@@ -61,8 +61,10 @@ function drawMeasurementRoi(){
   return r
 }
 function toViewPoint(p){
-  const s=getViewSize(),r=getRoiSource(),sx=p.x*(video.videoWidth||1280),sy=p.y*(video.videoHeight||720);
-  return{x:(sx-r.x)/r.width*s.width,y:(sy-r.y)/r.height*s.height}
+  // FaceMesh recebe o canvas já recortado. Portanto p.x/p.y já estão
+  // normalizados no mesmo plano da janela óptica.
+  const s=getViewSize();
+  return{x:p.x*s.width,y:p.y*s.height}
 }
 function setStep(n){document.querySelectorAll(".step").forEach(el=>{const s=Number(el.dataset.step);el.classList.toggle("active",s===n);el.classList.toggle("done",s<n)})}
 
@@ -198,10 +200,19 @@ function drawPoint(p,color="#55d6ff"){
   ctx.beginPath();ctx.arc(p.x,p.y,11,0,Math.PI*2);ctx.strokeStyle="#fff";ctx.lineWidth=2;ctx.stroke()
 }
 function drawIris(lm,cid,rids){
-  const cRaw=point(lm,cid),ring=rids.map(id=>point(lm,id)).filter(Boolean);if(!cRaw||ring.length<3)return null;
-  const c=toViewPoint(cRaw),rv=ring.map(toViewPoint),r=median(rv.map(p=>distance(c,p)));
-  ctx.beginPath();ctx.arc(c.x,c.y,r,0,Math.PI*2);ctx.strokeStyle="rgba(85,214,255,.95)";ctx.lineWidth=2;ctx.stroke();
-  ctx.beginPath();ctx.moveTo(c.x-9,c.y);ctx.lineTo(c.x+9,c.y);ctx.moveTo(c.x,c.y-9);ctx.lineTo(c.x,c.y+9);ctx.strokeStyle="#fff";ctx.lineWidth=2;ctx.stroke();drawPoint(c);return c
+  const cRaw=point(lm,cid);if(!cRaw)return null;
+  const c=toViewPoint(cRaw);
+  // Marcador de pupila compacto: o raio real do limbo não é desenhado
+  // como cursor, para não confundir o operador com uma área de medição.
+  ctx.beginPath();ctx.arc(c.x,c.y,9,0,Math.PI*2);
+  ctx.strokeStyle="rgba(255,255,255,.95)";ctx.lineWidth=2;ctx.stroke();
+  ctx.beginPath();ctx.arc(c.x,c.y,3.5,0,Math.PI*2);
+  ctx.fillStyle="#55d6ff";ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(c.x-13,c.y);ctx.lineTo(c.x+13,c.y);
+  ctx.moveTo(c.x,c.y-13);ctx.lineTo(c.x,c.y+13);
+  ctx.strokeStyle="rgba(85,214,255,.9)";ctx.lineWidth=1.5;ctx.stroke();
+  return c
 }
 function drawContour(lm,ids){const pts=ids.map(id=>point(lm,id)).filter(Boolean).map(toViewPoint);if(pts.length<2)return;ctx.beginPath();ctx.moveTo(pts[0].x,pts[0].y);pts.slice(1).forEach(p=>ctx.lineTo(p.x,p.y));ctx.strokeStyle="rgba(255,255,255,.55)";ctx.lineWidth=1.2;ctx.stroke()}
 function drawLabel(t,p){ctx.font="800 11px system-ui";ctx.fillStyle="#fff";ctx.strokeStyle="rgba(0,0,0,.75)";ctx.lineWidth=3;ctx.strokeText(t,p.x+9,p.y-10);ctx.fillText(t,p.x+9,p.y-10)}
