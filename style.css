@@ -283,3 +283,73 @@ button{cursor:pointer}
     height:100%;
   }
 }
+
+/* ===== CAMPO ÓPTICO REAL: faixa horizontal tipo armação ===== */
+@media(min-width:761px){
+  .workspace .viewer,
+  .workspace.measurement-mode .viewer{
+    aspect-ratio:16/5 !important;
+  }
+}
+@media(max-width:760px){
+  .workspace .viewer,
+  .workspace.measurement-mode .viewer{
+    aspect-ratio:16/6 !important;
+  }
+}
+.face-guide{
+  inset:22% 3.5% 24% 3.5%;
+  border:2px dashed rgba(85,214,255,.86);
+  border-radius:7px;
+  padding:7px 10px;
+  justify-content:flex-start;
+  align-items:flex-start;
+}
+.guide-title{font-size:10px;letter-spacing:.25px}
+.guide-subtitle{font-size:7px;max-width:360px}
+@media(max-width:760px){
+  .face-guide{inset:20% 3% 22% 3%;padding:6px 8px}
+  .guide-title{font-size:8px}
+  .guide-subtitle{font-size:6px}
+}
+
+/* Régua métrica: zero visual no centro da janela óptica. */
+.measurement-ruler{
+  position:absolute;
+  left:3.5%;right:3.5%;bottom:8px;height:42px;
+  z-index:9;pointer-events:none;
+  color:#dbeeff;
+}
+.measurement-ruler .ruler-line{
+  position:absolute;left:0;right:0;top:15px;height:1px;
+  background:rgba(85,214,255,.72);
+  box-shadow:0 0 8px rgba(85,214,255,.18);
+}
+.measurement-ruler .ruler-tick{
+  position:absolute;top:10px;width:1px;height:10px;
+  background:rgba(219,238,255,.68);
+}
+.measurement-ruler .ruler-tick.major{height:17px;top:6px;background:#fff}
+.measurement-ruler .ruler-label{
+  position:absolute;top:25px;transform:translateX(-50%);
+  font-size:7px;font-weight:750;white-space:nowrap;
+  color:rgba(219,238,255,.82);
+}
+.measurement-ruler .ruler-zero{
+  position:absolute;left:50%;top:0;transform:translateX(-50%);
+  width:30px;height:30px;border-radius:50%;
+  display:grid;place-items:center;
+  background:#17140e;border:2px solid #ffcc66;
+  color:#ffdf8a;font-size:10px;font-weight:900;
+  box-shadow:0 0 0 4px rgba(255,204,102,.12);
+}
+.measurement-ruler .ruler-title{
+  position:absolute;right:4px;top:0;
+  font-size:7px;font-weight:800;letter-spacing:.6px;
+  color:rgba(200,235,255,.72);
+}
+@media(max-width:760px){
+  .measurement-ruler{left:3%;right:3%;bottom:5px;height:34px}
+  .measurement-ruler .ruler-label{font-size:6px;top:23px}
+  .measurement-ruler .ruler-zero{width:25px;height:25px;font-size:9px}
+}
