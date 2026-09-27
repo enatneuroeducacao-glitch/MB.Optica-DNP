@@ -275,14 +275,8 @@ function addSample(lm,right,left,nasalView){
 function onResults(res){
   const s=getViewSize();
   if(!measurementRuler.classList.contains("hidden")&&calibration)renderMeasurementRuler();if(canvas.width!==Math.round(s.width)||canvas.height!==Math.round(s.height)){canvas.width=Math.round(s.width);canvas.height=Math.round(s.height)}
-  // O fundo do canvas já contém o ROI recortado desenhado por processFrame().
-  // Aqui apagamos somente os elementos anteriores desenhando a imagem ROI novamente.
-  if(roiCanvas.width===canvas.width&&roiCanvas.height===canvas.height){
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    ctx.drawImage(roiCanvas,0,0,canvas.width,canvas.height);
-  }else{
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-  }
+  // Canvas transparente: somente marcadores e guias são desenhados aqui.
+  ctx.clearRect(0,0,canvas.width,canvas.height);
   if(!res.multiFaceLandmarks?.length){faceState.textContent="Não detectado";alignmentState.textContent="—";statusDot.classList.remove("active");measurementState.textContent=calibration?"Aguardando":"Calibre primeiro";readingNote.textContent="Centralize o rosto dentro da área";return}
   const lm=res.multiFaceLandmarks[0],right=point(lm,RIGHT_IRIS_CENTER_ID),left=point(lm,LEFT_IRIS_CENTER_ID);if(!right||!left){faceState.textContent="Olhos não detectados";return}
   drawContour(lm,RIGHT_EYE_CONTOUR);drawContour(lm,LEFT_EYE_CONTOUR);
@@ -320,26 +314,18 @@ function initFaceMesh(){
 async function openCamera(){
   stopCamera();const constraints={audio:false,video:{facingMode:{ideal:cameraFacing},width:{ideal:1280},height:{ideal:720}}};
   try{stream=await navigator.mediaDevices.getUserMedia(constraints)}catch(e){stream=await navigator.mediaDevices.getUserMedia({audio:false,video:true})}
-  video.srcObject=stream;await video.play();$("cameraTitle").textContent=cameraFacing==="user"?"Frontal":"Traseira";$("cameraStatus").textContent=cameraFacing==="user"?"Câmera frontal selecionada":"Câmera traseira selecionada";$("cameraQuality").textContent="Ativa";statusDot.classList.add("active")
+  video.srcObject=stream;await video.play();
+  if(video.readyState<2) await new Promise(resolve=>{const done=()=>{video.removeEventListener("loadeddata",done);resolve()};video.addEventListener("loadeddata",done);setTimeout(resolve,1500)});
+  $("cameraTitle").textContent=cameraFacing==="user"?"Frontal":"Traseira";$("cameraStatus").textContent=cameraFacing==="user"?"Câmera frontal selecionada":"Câmera traseira selecionada";$("cameraQuality").textContent=video.readyState>=2?"Ativa":"Aguardando imagem";statusDot.classList.add("active")
 }
 function stopCamera(){if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;if(animationFrame)cancelAnimationFrame(animationFrame);animationFrame=null}
 async function processFrame(){
   if(!running)return;
   if(video.readyState>=2){
     try{
-      const roi=drawMeasurementRoi();
-      if(roi){
-        const s=getViewSize();
-        if(canvas.width!==Math.round(s.width)||canvas.height!==Math.round(s.height)){
-          canvas.width=Math.round(s.width);canvas.height=Math.round(s.height)
-        }
-        // O canvas visível passa a ser a própria imagem recortada.
-        // Assim o operador vê exatamente o mesmo plano que o FaceMesh mede.
-        ctx.save();
-        ctx.clearRect(0,0,canvas.width,canvas.height);
-        ctx.drawImage(roiCanvas,0,0,canvas.width,canvas.height);
-        ctx.restore();
-      }
+      // O vídeo permanece como imagem viva da câmera.
+      // O ROI é usado somente pelo FaceMesh, evitando uma camada congelada sobre o vídeo.
+      drawMeasurementRoi();
       await faceMesh.send({image:roiCanvas});
     }catch(e){console.error(e)}
   }
