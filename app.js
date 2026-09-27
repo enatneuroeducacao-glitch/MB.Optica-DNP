@@ -59,6 +59,7 @@ let dragHandle = null;
 
 let samples = [];
 let stableReading = null;
+let selectedReading = null;
 const STABLE_FRAMES = 24;
 
 let currentOs = null;
@@ -279,7 +280,7 @@ function alignmentInfo(right,left){
   return {roll:roll,good:Math.abs(roll)<=5.5};
 }
 function addSample(lm,right,left,ref){
-  if(!calibration)return;
+  if(!calibration || selectedReading)return;
   const rv=toViewPoint(right);
   const lv=toViewPoint(left);
   const refv=toViewPoint(ref);
@@ -442,7 +443,7 @@ async function selectCamera(facing){
   }
 }
 function resetSamples(){
-  samples=[];stableReading=null;
+  samples=[];stableReading=null;selectedReading=null;
   odEl.textContent="—";oeEl.textContent="—";dnpEl.textContent="—";
   readingCount.textContent="0/"+STABLE_FRAMES+" frames";
   readingNote.textContent=calibration?"Aguardando rosto":"Calibre primeiro";
@@ -485,8 +486,13 @@ function resetApp(){
 }
 function prepareOs(){
   if(!stableReading)return;
-  osDnp.textContent=stableReading.dnpMm.toFixed(1)+" mm";
-  osMono.textContent=stableReading.odMm.toFixed(1)+" / "+stableReading.oeMm.toFixed(1)+" mm";
+  selectedReading=JSON.parse(JSON.stringify(stableReading));
+  osDnp.textContent=selectedReading.dnpMm.toFixed(1)+" mm";
+  osMono.textContent=selectedReading.odMm.toFixed(1)+" / "+selectedReading.oeMm.toFixed(1)+" mm";
+  useReadingBtn.disabled=true;
+  measurementState.textContent="DNP selecionada";
+  measurementState.className="pill green";
+  readingNote.textContent="Leitura congelada para a O.S.";
   setStep(4);osPanel.classList.remove("hidden");
   osPanel.scrollIntoView({behavior:"smooth",block:"start"});
 }
@@ -504,7 +510,8 @@ function nextOsNumber(){
   return "DNP-"+day+"-"+String(n).padStart(3,"0");
 }
 function collectRecord(){
-  if(!stableReading)return null;
+  const reading=selectedReading || stableReading;
+  if(!reading)return null;
   const name=customerName.value.trim();
   if(!name){
     osValidation.textContent="Informe o nome do cliente para gerar a O.S.";
@@ -527,12 +534,12 @@ function collectRecord(){
     },
     sale:{number:saleNumber.value.trim()},
     measurement:{
-      odMm:stableReading.odMm,
-      oeMm:stableReading.oeMm,
-      dnpMm:stableReading.dnpMm,
-      stabilitySdMm:stableReading.sdMm
+      odMm:reading.odMm,
+      oeMm:reading.oeMm,
+      dnpMm:reading.dnpMm,
+      stabilitySdMm:reading.sdMm
     },
-    calibration:stableReading.calibration,
+    calibration:reading.calibration,
     source:"MB.Óptica DNP",
     integrationStatus:"pending"
   };
