@@ -167,46 +167,53 @@ function screenXForMetric(targetMm,yScreen,guessX){
   }
   return (lo+hi)/2
 }
-function drawCalibratedRuler(nasalView, pupilY){
+function drawCalibratedRuler(nasalView,pupilY){
   if(!calibration?.homography)return;
   const s=getViewSize();
   const nasalMetric=applyH(calibration.homography,nasalView);
-  const zeroX=nasalView.x, y=Math.max(24,Math.min(s.height-28,pupilY+48));
-  const maxEachSide=36;
-  const step=5;
-  ctx.save();
-  ctx.strokeStyle="rgba(225,242,255,.82)";ctx.lineWidth=1.2;
-  ctx.beginPath();ctx.moveTo(Math.max(12,zeroX-260),y);ctx.lineTo(Math.min(s.width-12,zeroX+260),y);ctx.stroke();
+  const zeroX=nasalView.x;
+  const y=Math.max(24,Math.min(s.height-28,pupilY+48));
+  const maxEachSide=35;
+  const step=1;
 
-  // 0 exatamente na ponte.
+  ctx.save();
+  ctx.strokeStyle="rgba(225,242,255,.86)";ctx.lineWidth=1;
+  ctx.beginPath();
+  ctx.moveTo(Math.max(8,zeroX-300),y);
+  ctx.lineTo(Math.min(s.width-8,zeroX+300),y);
+  ctx.stroke();
+
+  // Zero absoluto: ponte da armação.
   ctx.strokeStyle="#ffcc66";ctx.lineWidth=2.5;
-  ctx.beginPath();ctx.moveTo(zeroX,y-10);ctx.lineTo(zeroX,y+12);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(zeroX,y-12);ctx.lineTo(zeroX,y+14);ctx.stroke();
   ctx.fillStyle="#ffdf8a";ctx.font="900 9px system-ui";ctx.textAlign="center";
-  ctx.fillText("0 • PONTE",zeroX,y+25);
+  ctx.fillText("0",zeroX,y+27);
 
   for(let mm=step;mm<=maxEachSide;mm+=step){
     const xr=screenXForMetric(nasalMetric.x-mm,y,zeroX-mm*4);
     const xl=screenXForMetric(nasalMetric.x+mm,y,zeroX+mm*4);
-    if(xr!=null&&xr>=8&&xr<=s.width-8){
-      const major=mm%10===0;
-      ctx.strokeStyle=major?"rgba(255,255,255,.95)":"rgba(225,242,255,.62)";
-      ctx.lineWidth=major?1.5:1;
-      ctx.beginPath();ctx.moveTo(xr,y-(major?9:5));ctx.lineTo(xr,y+(major?7:4));ctx.stroke();
-      ctx.fillStyle="rgba(225,242,255,.9)";ctx.font=major?"800 8px system-ui":"700 7px system-ui";ctx.textAlign="center";
-      ctx.fillText(mm,xr,y+18);
-    }
-    if(xl!=null&&xl>=8&&xl<=s.width-8){
-      const major=mm%10===0;
-      ctx.strokeStyle=major?"rgba(255,255,255,.95)":"rgba(225,242,255,.62)";
-      ctx.lineWidth=major?1.5:1;
-      ctx.beginPath();ctx.moveTo(xl,y-(major?9:5));ctx.lineTo(xl,y+(major?7:4));ctx.stroke();
-      ctx.fillStyle="rgba(225,242,255,.9)";ctx.font=major?"800 8px system-ui":"700 7px system-ui";ctx.textAlign="center";
-      ctx.fillText(mm,xl,y+18);
+
+    for(const item of [[xr,"OD"],[xl,"OE"]]){
+      const x=item[0];
+      if(x==null||x<8||x>s.width-8)continue;
+      const major10=mm%10===0, major5=mm%5===0;
+      const tickH=major10?12:(major5?9:5);
+      ctx.strokeStyle=major10?"rgba(255,255,255,.98)":major5?"rgba(225,242,255,.9)":"rgba(225,242,255,.58)";
+      ctx.lineWidth=major10?1.8:(major5?1.4:1);
+      ctx.beginPath();ctx.moveTo(x,y-tickH);ctx.lineTo(x,y+tickH*.55);ctx.stroke();
+
+      if(major5){
+        ctx.fillStyle=major10?"rgba(255,255,255,.98)":"rgba(225,242,255,.9)";
+        ctx.font=major10?"800 8px system-ui":"700 7px system-ui";
+        ctx.textAlign="center";
+        ctx.fillText(String(mm),x,y+19);
+      }
     }
   }
-  ctx.fillStyle="rgba(210,236,255,.68)";ctx.font="800 7px system-ui";
-  ctx.textAlign="left";ctx.fillText("OD • PONTE → PUPILA",Math.max(8,zeroX-250),y-13);
-  ctx.textAlign="right";ctx.fillText("PUPILA → PONTE • OE",Math.min(s.width-8,zeroX+250),y-13);
+
+  ctx.fillStyle="rgba(210,236,255,.78)";ctx.font="800 7px system-ui";
+  ctx.textAlign="left";ctx.fillText("OD • 0 → pupila",Math.max(8,zeroX-300),y-15);
+  ctx.textAlign="right";ctx.fillText("pupila → 0 • OE",Math.min(s.width-8,zeroX+300),y-15);
   ctx.restore();
 }
 function renderMeasurementRuler(){
