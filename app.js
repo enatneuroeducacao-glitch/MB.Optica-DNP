@@ -15,7 +15,7 @@ const STABLE_FRAMES=24;
 const RIGHT_IRIS=468,LEFT_IRIS=473,NASAL=168,RIGHT_OUTER=33,LEFT_OUTER=263,FACE_LEFT=234,FACE_RIGHT=454,FACE_TOP=10,FACE_BOTTOM=152;
 const RIGHT_IRIS_EDGES=[469,470,471,472],LEFT_IRIS_EDGES=[474,475,476,477];
 const IRIS_DIAMETER_MM=11.7;
-const STORE_KEY="mb_dnp_facial_biometric_v28";
+const STORE_KEY="mb_dnp_facial_biometric_v29";
 
 function getView(){const r=viewer.getBoundingClientRect();return{w:r.width,h:r.height}}
 function resize(){const s=getView(),d=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(s.w*d);canvas.height=Math.round(s.h*d);canvas.style.width=s.w+"px";canvas.style.height=s.h+"px";ctx.setTransform(d,0,0,d,0,0)}
@@ -45,14 +45,14 @@ function geometryFromResult(result){
  const lm=result.faceLandmarks?.[0],matrix=result.facialTransformationMatrixes?.[0]?.data;
  if(!lm)return null;
  currentLandmarks=lm;
- const r=vp(lm[RIGHT_IRIS]),l=vp(lm[LEFT_IRIS]),ro=vp(lm[RIGHT_OUTER]),lo=vp(lm[LEFT_OUTER]),n=vp(lm[NASAL]);
+ const r=vp(lm[OD_IRIS]),l=vp(lm[OE_IRIS]),ro=vp(lm[OD_OUTER]),lo=vp(lm[OE_OUTER]),n=vp(lm[NASAL]);
  const fl=vp(lm[FACE_LEFT]),fr=vp(lm[FACE_RIGHT]),ft=vp(lm[FACE_TOP]),fb=vp(lm[FACE_BOTTOM]);
  if([r,l,ro,lo,n,fl,fr,ft,fb].some(p=>!p))return null;
  const axis={x:l.x-r.x,y:l.y-r.y},axisLen=Math.hypot(axis.x,axis.y)||1,u={x:axis.x/axisLen,y:axis.y/axisLen};
  const roll=Math.atan2(axis.y,Math.abs(axis.x))*180/Math.PI;
  const mid={x:(r.x+l.x)/2,y:(r.y+l.y)/2};
  const faceWidth=dist(fl,fr),faceHeight=dist(ft,fb),eyeOuterPx=dist(ro,lo);
- const irisRightPx=irisDiameterPx(r,RIGHT_IRIS_EDGES),irisLeftPx=irisDiameterPx(l,LEFT_IRIS_EDGES);
+ const irisRightPx=irisDiameterPx(r,OD_IRIS_EDGES),irisLeftPx=irisDiameterPx(l,OE_IRIS_EDGES);
  if(!Number.isFinite(irisRightPx)||!Number.isFinite(irisLeftPx))return null;
  const irisPx=(irisRightPx+irisLeftPx)/2;
  if(!Number.isFinite(irisPx)||irisPx<4)return null;
@@ -102,7 +102,7 @@ function updateBiometric(g,lm){
  stabilityMetric.textContent=samples.length<STABLE_FRAMES?"Capturando":(Math.max(std(samples.map(x=>x.od)),std(samples.map(x=>x.oe)))<.35?"Excelente":"Boa");
  if(samples.length===STABLE_FRAMES){
    const od=median(samples.map(x=>x.od)),oe=median(samples.map(x=>x.oe)),dp=median(samples.map(x=>x.dp)),spread=Math.max(std(samples.map(x=>x.od)),std(samples.map(x=>x.oe)));
-   currentReading={od,oe,dp,spread,frames:STABLE_FRAMES,scale:median(samples.map(x=>x.scale)),roll:median(samples.map(x=>x.roll)),yaw:median(samples.map(x=>x.yaw)),method:"facial-landmarker+iris-metric-scale"};
+   currentReading={od,oe,dp,spread,frames:STABLE_FRAMES,scale:median(samples.map(x=>x.scale)),roll:median(samples.map(x=>x.roll)),yaw:median(samples.map(x=>x.yaw)),method:"facial-landmarker+iris-apparent-scale"};
    odEl.textContent=od.toFixed(1)+" mm";oeEl.textContent=oe.toFixed(1)+" mm";dnpEl.textContent=(od+oe).toFixed(1)+" mm";
    zeroMetric.textContent="landmark 168 • automático";
    measurementState.textContent="Leitura pronta";measurementState.className="pill green";
