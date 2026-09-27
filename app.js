@@ -9,7 +9,7 @@ const rightMetric=$("rightMetric"),leftMetric=$("leftMetric"),noseMetric=$("nose
 const measurementState=$("measurementState"),odEl=$("od"),oeEl=$("oe"),dnpEl=$("dnp"),readingCount=$("readingCount"),readingNote=$("readingNote"),zeroMetric=$("zeroMetric"),useReadingBtn=$("useReadingBtn");
 const osPanel=$("osPanel"),customerName=$("customerName"),customerPhone=$("customerPhone"),customerCpf=$("customerCpf"),saleNumber=$("saleNumber"),customerType=$("customerType"),customerNotes=$("customerNotes"),osNumber=$("osNumber"),osDnp=$("osDnp"),osMono=$("osMono"),osValidation=$("osValidation");
 const savedPanel=$("savedPanel"),savedTitle=$("savedTitle"),savedSummary=$("savedSummary");
-let stream=null,running=false,faceLandmarker=null,lastVideoTime=-1,animationFrame=0,currentReading=null,samples=[],lastTimestampMs=0,loopErrorCount=0,processedFrames=0,lastStatusUpdate=0,lastDetectAt=0;
+let stream=null,running=false,faceLandmarker=null,lastVideoTime=-1,animationFrame=0,detectionTimer=0,currentReading=null,samples=[],lastTimestampMs=0,loopErrorCount=0,processedFrames=0,lastStatusUpdate=0,lastDetectAt=0,detectionBusy=false;
 let cameraFacing="user",currentGeometry=null,currentScale=null,currentOs=null;
 const STABLE_FRAMES=24;
 const RIGHT_IRIS=468,LEFT_IRIS=473,NASAL=168,RIGHT_OUTER=33,LEFT_OUTER=263,FACE_LEFT=234,FACE_RIGHT=454,FACE_TOP=10,FACE_BOTTOM=152;
@@ -116,13 +116,15 @@ async function initLandmarker(){
  cameraStatus.textContent="Carregando motor facial…";
  const {FilesetResolver,FaceLandmarker}=await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/+esm");
  const vision=await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm");
- const options={baseOptions:{modelAssetPath:"https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",delegate:"GPU"},runningMode:"VIDEO",numFaces:1,outputFaceBlendshapes:false,outputFacialTransformationMatrixes:true,minFaceDetectionConfidence:.65,minFacePresenceConfidence:.65,minTrackingConfidence:.65};
+ const base={modelAssetPath:"https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"};
+ const common={runningMode:"VIDEO",numFaces:1,outputFaceBlendshapes:false,outputFacialTransformationMatrixes:true,minFaceDetectionConfidence:.55,minFacePresenceConfidence:.55,minTrackingConfidence:.55};
  try{
-   faceLandmarker=await FaceLandmarker.createFromOptions(vision,options);
- }catch(gpuError){
-   cameraStatus.textContent="GPU indisponível • usando processamento compatível…";
-   options.baseOptions.delegate="CPU";
-   faceLandmarker=await FaceLandmarker.createFromOptions(vision,options);
+   cameraStatus.textContent="Inicializando leitura facial • CPU…";
+   faceLandmarker=await FaceLandmarker.createFromOptions(vision,{baseOptions:{...base,delegate:"CPU"},...common});
+ }catch(cpuError){
+   console.warn("MB DNP CPU:",cpuError);
+   cameraStatus.textContent="Inicializando leitura facial • GPU…";
+   faceLandmarker=await FaceLandmarker.createFromOptions(vision,{baseOptions:{...base,delegate:"GPU"},...common});
  }
 }
 
@@ -130,63 +132,73 @@ async function initCamera(facing=cameraFacing){
  if(stream)stream.getTracks().forEach(t=>t.stop());
  cameraFacing=facing;
  stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:facing},width:{ideal:1280},height:{ideal:720}},audio:false});
- video.srcObject=stream;await video.play();resize();statusDot.classList.add("on");cameraStatus.textContent="Câmera ativa • centralize o rosto";cameraQuality.textContent="Ativa";running=true;lastVideoTime=-1;lastTimestampMs=0;lastDetectAt=0;processedFrames=0;lastStatusUpdate=0;loop();
+ video.srcObject=stream;await video.play();resize();statusDot.classList.add("on");cameraStatus.textContent="Câmera ativa • centralize o rosto";cameraQuality.textContent="Ativa";running=true;lastVideoTime=-1;lastTimestampMs=0;lastDetectAt=0;processedFrames=0;lastStatusUpdate=0;startDetection();
 }
 
-function loop(){
- if(!running)return;
+function processFrame(){
+ if(!running||detectionBusy)return;
+ if(!faceLandmarker||video.readyState<2||video.videoWidth===0)return;
+ detectionBusy=true;
  try{
    const now=performance.now();
-   if(video.readyState>=2&&video.videoWidth>0&&faceLandmarker&&now-lastDetectAt>=80){
-     lastDetectAt=now;
-     const timestampMs=Math.max(Math.round(now),lastTimestampMs+1);
-     lastTimestampMs=timestampMs;
-     const result=faceLandmarker.detectForVideo(video,timestampMs);
-     processedFrames++;
-     if(result?.faceLandmarks?.length){
-       const lm=result.faceLandmarks[0];
-       const g=geometryFromResult(result);
-       if(g){
-         loopErrorCount=0;
-         currentGeometry=g;
-         drawBiometricMap(lm,g);
-         const q=quality(g);
-         cameraQuality.textContent=q.good?"Boa captura":"Ajustar";
-         cameraQuality.className=q.good?"pill green":"pill amber";
-         captureBadge.textContent=q.good?"ROSTO MAPEADO":"AJUSTE DE POSE";
-         updateBiometric(g,lm);
-       }else{
-         faceState.textContent="Rosto detectado";
-         faceState.className="pill";
-         cameraQuality.textContent="Mapa facial";
-         cameraQuality.className="pill green";
-         captureBadge.textContent="ANALISANDO ÍRIS";
-         biometricNote.textContent="Rosto detectado • aguardando os pontos de íris para calcular a escala";
-       }
-       if(now-lastStatusUpdate>1000){
-         cameraStatus.textContent="Câmera ativa • "+processedFrames+" leituras faciais processadas";
-         lastStatusUpdate=now;
-       }
+   const timestampMs=Math.max(Math.round(now),lastTimestampMs+1);
+   lastTimestampMs=timestampMs;
+   const result=faceLandmarker.detectForVideo(video,timestampMs);
+   processedFrames++;
+   lastDetectAt=now;
+   if(result?.faceLandmarks?.length){
+     const lm=result.faceLandmarks[0];
+     const g=geometryFromResult(result);
+     if(g){
+       loopErrorCount=0;
+       currentGeometry=g;
+       drawBiometricMap(lm,g);
+       const q=quality(g);
+       cameraQuality.textContent=q.good?"Boa captura":"Ajustar";
+       cameraQuality.className=q.good?"pill green":"pill amber";
+       captureBadge.textContent=q.good?"ROSTO MAPEADO":"AJUSTE DE POSE";
+       updateBiometric(g,lm);
+       cameraStatus.textContent="Câmera ativa • rosto mapeado • "+processedFrames+" leituras";
      }else{
-       ctx.clearRect(0,0,getView().w,getView().h);
-       faceState.textContent="Não detectado";
-       faceState.className="pill amber";
-       cameraQuality.textContent="Sem rosto";
-       cameraQuality.className="pill amber";
-       captureBadge.textContent="APROXIME O ROSTO";
-       biometricNote.textContent="O sistema está procurando a geometria facial.";
+       faceState.textContent="Rosto detectado";
+       faceState.className="pill green";
+       cameraQuality.textContent="Analisando";
+       cameraQuality.className="pill green";
+       captureBadge.textContent="ANALISANDO ROSTO";
+       biometricNote.textContent="Rosto detectado • refinando olhos e íris…";
+       cameraStatus.textContent="Câmera ativa • rosto detectado • refinando mapa facial";
      }
+   }else{
+     ctx.clearRect(0,0,getView().w,getView().h);
+     faceState.textContent="Não detectado";
+     faceState.className="pill amber";
+     cameraQuality.textContent="Sem rosto";
+     cameraQuality.className="pill amber";
+     captureBadge.textContent="APROXIME O ROSTO";
+     biometricNote.textContent="Câmera ativa • procurando o rosto…";
+     cameraStatus.textContent="Câmera ativa • procurando rosto";
    }
  }catch(e){
    loopErrorCount++;
-   console.error("MB DNP loop:",e);
-   cameraQuality.textContent="Erro de leitura";
+   console.error("MB DNP Face Landmarker:",e);
+   cameraQuality.textContent="Erro facial";
    cameraQuality.className="pill amber";
-   captureBadge.textContent="RECUPERANDO";
-   biometricNote.textContent="Falha momentânea na leitura facial; tentando novamente…";
-   if(loopErrorCount===1) cameraStatus.textContent="Câmera ativa • erro no primeiro quadro: "+(e?.message||e);
+   captureBadge.textContent="ERRO DE LEITURA";
+   biometricNote.textContent="O motor facial encontrou um erro e está tentando novamente.";
+   cameraStatus.textContent="Câmera ativa • erro do motor facial";
+ }finally{
+   detectionBusy=false;
  }
+}
+function loop(){
+ if(!running)return;
+ processFrame();
  animationFrame=requestAnimationFrame(loop);
+}
+function startDetection(){
+ if(detectionTimer)clearInterval(detectionTimer);
+ detectionTimer=setInterval(processFrame,120);
+ loop();
 }
 async function start(){
  try{intro.classList.add("hidden");workspace.classList.remove("hidden");setStep(1);resize();await initLandmarker();await initCamera("user");}
@@ -253,4 +265,4 @@ $("saveDraftBtn").addEventListener("click",()=>{if(!customerName.value.trim()){o
 $("generateOsBtn").addEventListener("click",()=>{if(!customerName.value.trim()){osValidation.textContent="Informe o nome do cliente.";osValidation.className="validation error";osValidation.classList.remove("hidden");return}const os=saveOs();savedTitle.textContent="O.S. "+os.number;savedSummary.textContent=customerName.value+" • DNP "+os.measurement.dnpMm.toFixed(1)+" mm • OD "+os.measurement.odMm.toFixed(1)+" mm • OE "+os.measurement.oeMm.toFixed(1)+" mm.";savedPanel.classList.remove("hidden");osPanel.classList.add("hidden");savedPanel.scrollIntoView({behavior:"smooth",block:"start"})});
 $("printBtn").addEventListener("click",()=>{if(!currentOs)return;const m=currentOs.measurement,c=currentOs.customer,w=window.open("","_blank","width=800,height=700");w.document.write("<html><head><title>"+currentOs.number+"</title><style>body{font-family:Arial;padding:32px;color:#111}.box{border:1px solid #aaa;padding:16px;margin:12px 0}.big{font-size:28px;font-weight:800}</style></head><body><h1>MB.Óptica — O.S.</h1>"+currentOs.number+"<div class=box><b>Cliente</b><br>"+c.name+"<br>"+c.phone+" "+c.cpf+"</div><div class=box><b>Biometria facial</b><div class=big>DNP "+m.dnpMm.toFixed(1)+" mm</div>OD "+m.odMm.toFixed(1)+" mm • OE "+m.oeMm.toFixed(1)+" mm • DP "+m.dpMm.toFixed(1)+" mm</div><div class=box>Método: Face Landmarker + escala biométrica pela íris • 24 quadros estáveis • referência nasal automática (landmark "+m.referenceNasalLandmark+")</div></body></html>");w.document.close();w.print()});
 $("anotherBtn").addEventListener("click",()=>location.reload());
-$("settingsBtn").addEventListener("click",()=>alert("MB DNP v26 • biometria facial • dados locais neste dispositivo"));
+$("settingsBtn").addEventListener("click",()=>alert("MB DNP v27 • biometria facial • dados locais neste dispositivo"));
