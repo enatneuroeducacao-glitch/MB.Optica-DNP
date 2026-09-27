@@ -12,8 +12,9 @@ let stream=null,running=false,faceLandmarker=null,lastVideoTime=-1,animationFram
 let cameraFacing="user",currentGeometry=null,currentScale=null,currentOs=null;
 const STABLE_FRAMES=24;
 const RIGHT_IRIS=468,LEFT_IRIS=473,NASAL=168,RIGHT_OUTER=33,LEFT_OUTER=263,FACE_LEFT=234,FACE_RIGHT=454,FACE_TOP=10,FACE_BOTTOM=152;
-const CANONICAL_EYE_OUTER_CM=8.891718;
-const STORE_KEY="mb_dnp_facial_biometric_v22";
+const RIGHT_IRIS_EDGES=[469,470,471,472],LEFT_IRIS_EDGES=[474,475,476,477];
+const IRIS_DIAMETER_MM=11.7;
+const STORE_KEY="mb_dnp_facial_biometric_v23";
 
 function getView(){const r=viewer.getBoundingClientRect();return{w:r.width,h:r.height}}
 function resize(){const s=getView(),d=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(s.w*d);canvas.height=Math.round(s.h*d);canvas.style.width=s.w+"px";canvas.style.height=s.h+"px";ctx.setTransform(d,0,0,d,0,0)}
@@ -32,10 +33,16 @@ function matrixScale(matrix){
  const s=(sx+sy+sz)/3;
  return Number.isFinite(s)&&s>0?s:null;
 }
+function irisDiameterPx(center,edges){
+ const ds=edges.map(i=>dist(center,vp(currentLandmarks[i])));
+ return ds.reduce((a,b)=>a+b,0)/ds.length*2;
+}
+let currentLandmarks=[];
 
 function geometryFromResult(result){
  const lm=result.faceLandmarks?.[0],matrix=result.facialTransformationMatrixes?.[0]?.data;
  if(!lm)return null;
+ currentLandmarks=lm;
  const r=vp(lm[RIGHT_IRIS]),l=vp(lm[LEFT_IRIS]),ro=vp(lm[RIGHT_OUTER]),lo=vp(lm[LEFT_OUTER]),n=vp(lm[NASAL]);
  const fl=vp(lm[FACE_LEFT]),fr=vp(lm[FACE_RIGHT]),ft=vp(lm[FACE_TOP]),fb=vp(lm[FACE_BOTTOM]);
  if([r,l,ro,lo,n,fl,fr,ft,fb].some(p=>!p))return null;
@@ -43,15 +50,16 @@ function geometryFromResult(result){
  const roll=Math.atan2(axis.y,Math.abs(axis.x))*180/Math.PI;
  const mid={x:(r.x+l.x)/2,y:(r.y+l.y)/2};
  const faceWidth=dist(fl,fr),faceHeight=dist(ft,fb),eyeOuterPx=dist(ro,lo);
- const scale=matrixScale(matrix);
- if(!scale||eyeOuterPx<20)return null;
- const eyeOuterCm=CANONICAL_EYE_OUTER_CM*scale;
- const mmPerPx=(eyeOuterCm*10)/eyeOuterPx;
+ const irisRightPx=irisDiameterPx(r,RIGHT_IRIS_EDGES),irisLeftPx=irisDiameterPx(l,LEFT_IRIS_EDGES);
+ const irisPx=(irisRightPx+irisLeftPx)/2;
+ if(!Number.isFinite(irisPx)||irisPx<4)return null;
+ const mmPerPx=IRIS_DIAMETER_MM/irisPx;
+ const scale=matrixScale(matrix)||1;
  const project=p=>(p.x-mid.x)*u.x+(p.y-mid.y)*u.y;
  const pr=project(r),pl=project(l),pn=project(n);
  const od=Math.abs(pn-pr)*mmPerPx,oe=Math.abs(pl-pn)*mmPerPx,dp=Math.abs(pl-pr)*mmPerPx;
  const yaw=Math.abs((n.x-mid.x)/Math.max(1,eyeOuterPx));
- return {r,l,n,ro,lo,fl,fr,ft,fb,roll,yaw,faceWidth,faceHeight,eyeOuterPx,scale,eyeOuterCm,mmPerPx,od,oe,dp};
+ return {r,l,n,ro,lo,fl,fr,ft,fb,roll,yaw,faceWidth,faceHeight,eyeOuterPx,irisRightPx,irisLeftPx,irisPx,scale,mmPerPx,od,oe,dp};
 }
 
 function drawLine(a,b,stroke="rgba(85,214,255,.65)",width=1){ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.strokeStyle=stroke;ctx.lineWidth=width;ctx.stroke()}
@@ -71,7 +79,7 @@ function drawBiometricMap(lm,g){
 
 function quality(g){
  const roll=Math.abs(g.roll),yaw=g.yaw;
- const good=roll<=5.5&&yaw<=.16;
+ const good=roll<=12&&yaw<=.25;
  return {good,roll,yaw};
 }
 
@@ -81,21 +89,21 @@ function updateBiometric(g,lm){
  faceMetric.textContent=Math.round(g.faceWidth)+" × "+Math.round(g.faceHeight)+" px";
  poseMetric.textContent=q.good?"Frontal":"Ajustar";
  poseMetric.className=q.good?"pill green":"pill amber";
- scaleMetric.textContent=g.scale.toFixed(3)+"×";
+ scaleMetric.textContent=g.irisPx.toFixed(1)+" px/íris";
  rightMetric.textContent=g.r.x.toFixed(0)+", "+g.r.y.toFixed(0);
  leftMetric.textContent=g.l.x.toFixed(0)+", "+g.l.y.toFixed(0);
  noseMetric.textContent=g.n.x.toFixed(0)+", "+g.n.y.toFixed(0);
- biometricNote.textContent=q.good?"Mapa facial estável • escala derivada do modelo 3D":"Centralize o rosto e mantenha a cabeça reta";
+ biometricNote.textContent=q.good?"Mapa facial estável • escala métrica estimada pelo diâmetro da íris":"Centralize o rosto e mantenha a cabeça reta";
  if(q.good){samples.push({od:g.od,oe:g.oe,dp:g.dp,scale:g.scale,roll:g.roll,yaw:g.yaw});if(samples.length>STABLE_FRAMES)samples.shift()}
  readingCount.textContent=samples.length+"/"+STABLE_FRAMES+" quadros";
  stabilityMetric.textContent=samples.length<STABLE_FRAMES?"Capturando":(Math.max(std(samples.map(x=>x.od)),std(samples.map(x=>x.oe))<.35)?"Excelente":"Boa");
  if(samples.length===STABLE_FRAMES){
    const od=median(samples.map(x=>x.od)),oe=median(samples.map(x=>x.oe)),dp=median(samples.map(x=>x.dp)),spread=Math.max(std(samples.map(x=>x.od)),std(samples.map(x=>x.oe)));
-   currentReading={od,oe,dp,spread,frames:STABLE_FRAMES,scale:median(samples.map(x=>x.scale)),roll:median(samples.map(x=>x.roll)),yaw:median(samples.map(x=>x.yaw)),method:"facial-landmarker+canonical-face-model"};
+   currentReading={od,oe,dp,spread,frames:STABLE_FRAMES,scale:median(samples.map(x=>x.scale)),roll:median(samples.map(x=>x.roll)),yaw:median(samples.map(x=>x.yaw)),method:"facial-landmarker+iris-metric-scale"};
    odEl.textContent=od.toFixed(1)+" mm";oeEl.textContent=oe.toFixed(1)+" mm";dnpEl.textContent=(od+oe).toFixed(1)+" mm";
    zeroMetric.textContent="landmark 168 • automático";
    measurementState.textContent="Leitura pronta";measurementState.className="pill green";
-   readingNote.textContent="24 quadros • modelo facial métrico";
+   readingNote.textContent="24 quadros • escala biométrica pela íris";
    useReadingBtn.disabled=false;
  }
 }
@@ -103,8 +111,8 @@ function updateBiometric(g,lm){
 async function initLandmarker(){
  if(faceLandmarker)return;
  cameraStatus.textContent="Carregando motor facial…";
- const {FilesetResolver,FaceLandmarker}=await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304/+esm");
- const vision=await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304/wasm");
+ const {FilesetResolver,FaceLandmarker}=await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/+esm");
+ const vision=await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm");
  const options={baseOptions:{modelAssetPath:"https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",delegate:"GPU"},runningMode:"VIDEO",numFaces:1,outputFaceBlendshapes:false,outputFacialTransformationMatrixes:true,minFaceDetectionConfidence:.65,minFacePresenceConfidence:.65,minTrackingConfidence:.65};
  try{
    faceLandmarker=await FaceLandmarker.createFromOptions(vision,options);
