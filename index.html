@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#07111f">
   <meta name="description" content="MB.Óptica DNP — medição de distância naso-pupilar com calibração física e geração de O.S.">
   <title>MB.Óptica DNP</title>
-  <link rel="stylesheet" href="./style.css?v=20260926-07">
+  <link rel="stylesheet" href="./style.css?v=20260926-08">
 </head>
 <body>
 <main class="app">
@@ -53,9 +53,10 @@
       <canvas id="overlay"></canvas>
       <button class="nasal-handle hidden" id="nasalHandle" type="button" aria-label="Ponto 0 da ponte da armação"></button>
       <div class="face-guide" id="faceGuide">
-        <div class="guide-title">Enquadre os olhos e a ponte</div>
-        <div class="guide-subtitle">somente a região dos óculos deve ficar dentro do retângulo</div>
+        <div class="guide-title">ENQUADRE COMO SE FOSSEM OS ÓCULOS</div>
+        <div class="guide-subtitle">somente olhos + ponte • mantenha esta faixa horizontal preenchida</div>
       </div>
+      <div class="measurement-ruler hidden" id="measurementRuler" aria-label="Régua métrica da medição DNP"></div>
       <div class="calibration-overlay hidden" id="calibrationOverlay">
         <div class="cal-rect"></div>
         <div class="cal-centerline"></div>
@@ -226,6 +227,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-<script src="./app.js?v=20260926-07"></script>
+<script src="./app.js?v=20260926-08"></script>
 </body>
 </html>
