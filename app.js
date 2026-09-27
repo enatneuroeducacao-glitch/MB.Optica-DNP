@@ -6,6 +6,7 @@ const statusDot=$("statusDot"), workspace=$("workspace"), intro=$("intro"), view
 const calibrationOverlay=$("calibrationOverlay"), calibrationPanel=$("calibrationPanel");
 const measurementPanel=$("measurementPanel"), osPanel=$("osPanel"), savedPanel=$("savedPanel"), settingsPanel=$("settingsPanel");
 const cameraControls=document.querySelector(".camera-controls");
+const measurementRuler=$("measurementRuler");
 const referenceMmEl=$("referenceMm"), referenceHeightMmEl=$("referenceHeightMm"), scaleValue=$("scaleValue");
 const calibrationState=$("calibrationState"), calibrationValidation=$("calibrationValidation");
 const measurementState=$("measurementState"), faceState=$("faceState"), stabilityState=$("stabilityState");
@@ -17,6 +18,9 @@ const saleNumber=$("saleNumber"), customerType=$("customerType"), customerNotes=
 const osNumber=$("osNumber"), osDnp=$("osDnp"), osMono=$("osMono"), osValidation=$("osValidation");
 
 let stream=null,running=false,cameraFacing="user",animationFrame=null;
+const roiCanvas=document.createElement("canvas"),roiCtx=roiCanvas.getContext("2d");
+const ROI_ZOOM=1.35; // aproxima digitalmente a região dos óculos sem alterar a calibração métrica
+
 let calibration=null,nasalPoint={x:0,y:0},nasalConfirmed=false,dragHandle=null,nasalDragging=false;
 let samples=[],stableReading=null,selectedReading=null;
 const STABLE_FRAMES=24;
@@ -36,10 +40,29 @@ function median(v){if(!v.length)return 0;const s=[...v].sort((a,b)=>a-b),m=Math.
 function mean(v){return v.length?v.reduce((a,b)=>a+b,0)/v.length:0}
 function std(v){if(v.length<2)return 0;const m=mean(v);return Math.sqrt(mean(v.map(x=>(x-m)**2)))}
 function getViewSize(){const r=viewer.getBoundingClientRect();return{width:Math.max(1,r.width),height:Math.max(1,r.height)}}
-function toViewPoint(p){
+function getRoiSource(){
   const sw=video.videoWidth||1280,sh=video.videoHeight||720,s=getViewSize();
-  const scale=Math.max(s.width/sw,s.height/sh),rw=sw*scale,rh=sh*scale;
-  return{x:p.x*rw-(rw-s.width)/2,y:p.y*rh-(rh-s.height)/2}
+  const aspect=s.width/s.height;
+  let cw=sw/ROI_ZOOM;
+  let ch=cw/aspect;
+  if(ch>sh){ch=sh;cw=ch*aspect}
+  if(cw>sw){cw=sw;ch=cw/aspect}
+  const x=(sw-cw)/2;
+  const y=Math.max(0,Math.min(sh-ch,sh*.50-ch/2));
+  return{x,y,width:cw,height:ch}
+}
+function drawMeasurementRoi(){
+  if(video.readyState<2)return null;
+  const s=getViewSize(),r=getRoiSource();
+  const w=Math.max(2,Math.round(s.width)),h=Math.max(2,Math.round(s.height));
+  if(roiCanvas.width!==w||roiCanvas.height!==h){roiCanvas.width=w;roiCanvas.height=h}
+  roiCtx.clearRect(0,0,w,h);
+  roiCtx.drawImage(video,r.x,r.y,r.width,r.height,0,0,w,h);
+  return r
+}
+function toViewPoint(p){
+  const s=getViewSize(),r=getRoiSource(),sx=p.x*(video.videoWidth||1280),sy=p.y*(video.videoHeight||720);
+  return{x:(sx-r.x)/r.width*s.width,y:(sy-r.y)/r.height*s.height}
 }
 function setStep(n){document.querySelectorAll(".step").forEach(el=>{const s=Number(el.dataset.step);el.classList.toggle("active",s===n);el.classList.toggle("done",s<n)})}
 
@@ -112,7 +135,31 @@ function applyH(H,p){
   const d=H[6]*p.x+H[7]*p.y+H[8],x=(H[0]*p.x+H[1]*p.y+H[2])/d,y=(H[3]*p.x+H[4]*p.y+H[5])/d;
   return{x,y}
 }
-function setCalibration(){
+function renderMeasurementRuler(){
+  if(!measurementRuler)return;
+  const s=getViewSize();
+  const ticks=[];
+  const step=5;
+  const maxMm=40;
+  // Escala visual baseada no plano calibrado. O zero fica no centro da janela.
+  let pxPerMm=(s.width*.78)/(calibration?.widthMm||85.6);
+  if(calibration){
+    const pts=["tl","tr","br","bl"].map(k=>calibrationPoints[k]);
+    const top=distance(pts[0],pts[1]),bottom=distance(pts[3],pts[2]);
+    const avg=(top+bottom)/2;
+    if(Number.isFinite(avg)&&avg>0)pxPerMm=avg/(calibration.widthMm||85.6);
+  }
+  const center=s.width/2;
+  for(let mm=-maxMm;mm<=maxMm;mm+=step){
+    const x=center+mm*pxPerMm;
+    if(x<0||x>s.width)continue;
+    const major=mm%10===0;
+    ticks.push('<span class="ruler-tick '+(major?'major':'')+'" style="left:'+x.toFixed(1)+'px"></span>');
+    if(major)ticks.push('<span class="ruler-label" style="left:'+x.toFixed(1)+'px">'+(mm===0?'0':Math.abs(mm))+'</span>');
+  }
+  measurementRuler.innerHTML='<div class="ruler-line"></div>'+ticks.join('')+'<div class="ruler-zero">0</div><div class="ruler-title">mm • eixo óptico</div>';
+}
+\nfunction setCalibration(){
 
   const W=Number(referenceMmEl.value),H=Number(referenceHeightMmEl.value);
   if(!Number.isFinite(W)||W<10||W>300||!Number.isFinite(H)||H<10||H>300){
@@ -129,7 +176,7 @@ function setCalibration(){
   calibrationState.textContent="Plano métrico";calibrationState.className="pill green";
   calibrationValidation.textContent="Plano calibrado com 4 pontos e correção de perspectiva. Agora o ponto 0 será confirmado na ponte da armação.";
   calibrationValidation.className="validation ok";scaleValue.textContent=W.toFixed(1)+" × "+H.toFixed(2)+" mm • homografia OK";
-  measurementPanel.classList.remove("hidden");workspace.classList.add("measurement-mode");calibrationPanel.classList.add("hidden");cameraControls.classList.add("hidden");calibrationOverlay.classList.add("hidden");nasalHandle.classList.remove("hidden");nasalConfirmed=false;confirmNasalBtn.disabled=true;nasalReferenceValue.textContent="Posicione o marcador na ponte da armação";setStep(3);resetSamples();
+  measurementPanel.classList.remove("hidden");workspace.classList.add("measurement-mode");calibrationPanel.classList.add("hidden");cameraControls.classList.add("hidden");calibrationOverlay.classList.add("hidden");nasalHandle.classList.remove("hidden");measurementRuler.classList.remove("hidden");renderMeasurementRuler();nasalConfirmed=false;confirmNasalBtn.disabled=true;nasalReferenceValue.textContent="Posicione o marcador na ponte da armação";setStep(3);resetSamples();
   calibrationPanel.scrollIntoView({behavior:"smooth",block:"start"});
   setTimeout(()=>measurementPanel.scrollIntoView({behavior:"smooth",block:"start"}),450);
   return true
@@ -139,7 +186,7 @@ $("confirmCalibrationBtn").addEventListener("click",setCalibration);
 function invalidateCalibration(reason){
   calibration=null;calibrationState.textContent="Não calibrado";calibrationState.className="pill amber";
   calibrationValidation.textContent=reason||"Faça uma nova calibração.";calibrationValidation.className="validation warn";
-  scaleValue.textContent="—";measurementPanel.classList.add("hidden");workspace.classList.remove("measurement-mode");calibrationPanel.classList.remove("hidden");cameraControls.classList.remove("hidden");calibrationOverlay.classList.remove("hidden");
+  scaleValue.textContent="—";measurementPanel.classList.add("hidden");workspace.classList.remove("measurement-mode");calibrationPanel.classList.remove("hidden");cameraControls.classList.remove("hidden");calibrationOverlay.classList.remove("hidden");measurementRuler.classList.add("hidden");
   setStep(2);resetSamples();nasalConfirmed=false;nasalHandle.classList.add("hidden");confirmNasalBtn.disabled=true;resetCalibrationHandles()
 }
 
@@ -182,7 +229,8 @@ function addSample(lm,right,left,nasalView){
 }
 
 function onResults(res){
-  const s=getViewSize();if(canvas.width!==Math.round(s.width)||canvas.height!==Math.round(s.height)){canvas.width=Math.round(s.width);canvas.height=Math.round(s.height)}
+  const s=getViewSize();
+  if(!measurementRuler.classList.contains("hidden")&&calibration)renderMeasurementRuler();if(canvas.width!==Math.round(s.width)||canvas.height!==Math.round(s.height)){canvas.width=Math.round(s.width);canvas.height=Math.round(s.height)}
   ctx.clearRect(0,0,canvas.width,canvas.height);
   if(!res.multiFaceLandmarks?.length){faceState.textContent="Não detectado";alignmentState.textContent="—";statusDot.classList.remove("active");measurementState.textContent=calibration?"Aguardando":"Calibre primeiro";readingNote.textContent="Centralize o rosto dentro da área";return}
   const lm=res.multiFaceLandmarks[0],right=point(lm,RIGHT_IRIS_CENTER_ID),left=point(lm,LEFT_IRIS_CENTER_ID);if(!right||!left){faceState.textContent="Olhos não detectados";return}
@@ -215,7 +263,16 @@ async function openCamera(){
   video.srcObject=stream;await video.play();$("cameraTitle").textContent=cameraFacing==="user"?"Frontal":"Traseira";$("cameraStatus").textContent=cameraFacing==="user"?"Câmera frontal selecionada":"Câmera traseira selecionada";$("cameraQuality").textContent="Ativa";statusDot.classList.add("active")
 }
 function stopCamera(){if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;if(animationFrame)cancelAnimationFrame(animationFrame);animationFrame=null}
-async function processFrame(){if(!running)return;if(video.readyState>=2){try{await faceMesh.send({image:video})}catch(e){console.error(e)}}animationFrame=requestAnimationFrame(processFrame)}
+async function processFrame(){
+  if(!running)return;
+  if(video.readyState>=2){
+    try{
+      drawMeasurementRoi();
+      await faceMesh.send({image:roiCanvas});
+    }catch(e){console.error(e)}
+  }
+  animationFrame=requestAnimationFrame(processFrame)
+}
 async function selectCamera(facing){cameraFacing=facing;frontBtn.classList.toggle("active",facing==="user");rearBtn.classList.toggle("active",facing==="environment");if(!stream)return;try{await openCamera();invalidateCalibration("A câmera foi alterada. Faça uma nova calibração para esta câmera.")}catch(e){console.error(e);$("cameraQuality").textContent="Erro";alert("Não foi possível acessar a câmera selecionada.")}}
 
 function resetSamples(){
@@ -224,7 +281,7 @@ function resetSamples(){
   stabilityState.textContent="—";faceState.textContent="—";alignmentState.textContent="—";measurementState.textContent=calibration?"Aguardando":"Aguardando";measurementState.className="pill";useReadingBtn.disabled=true
 }
 async function start(){
-  intro.classList.add("hidden");workspace.classList.remove("hidden","measurement-mode");calibrationPanel.classList.remove("hidden");cameraControls.classList.remove("hidden");savedPanel.classList.add("hidden");settingsPanel.classList.add("hidden");
+  intro.classList.add("hidden");workspace.classList.remove("hidden","measurement-mode");calibrationPanel.classList.remove("hidden");cameraControls.classList.remove("hidden");measurementRuler.classList.add("hidden");savedPanel.classList.add("hidden");settingsPanel.classList.add("hidden");
   try{await openCamera();running=true;processFrame();calibrationOverlay.classList.remove("hidden");measurementPanel.classList.add("hidden");setStep(2);calibration=null;nasalPoint={x:0,y:0};nasalConfirmed=false;nasalHandle.classList.add("hidden");calibrationState.textContent="Não calibrado";calibrationState.className="pill amber";calibrationValidation.textContent="Faça a calibração física desta sessão antes de medir.";calibrationValidation.className="validation warn";scaleValue.textContent="—";resetCalibrationHandles()}
   catch(e){console.error(e);alert("Permita o acesso à câmera no navegador e tente novamente.");resetApp()}
 }
