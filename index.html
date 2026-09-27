@@ -51,6 +51,7 @@
     <section class="viewer" id="viewer">
       <video id="video" autoplay playsinline muted></video>
       <canvas id="overlay"></canvas>
+      <button class="nasal-handle hidden" id="nasalHandle" type="button" aria-label="Ponto 0 da ponte da armação"></button>
       <div class="face-guide" id="faceGuide">
         <div class="guide-title">Centralize o rosto</div>
         <div class="guide-subtitle">olhe para a câmera e mantenha a cabeça reta</div>
@@ -147,7 +148,11 @@
       </div>
       <div class="nasal-reference">
         <div><span>PONTO 0</span><strong>ponte da armação</strong></div>
-        <span id="nasalReferenceValue">0,0 mm • confirme na ponte</span>
+        <span id="nasalReferenceValue">Posicione e fixe o ponto 0</span>
+      </div>
+      <div class="button-row nasal-actions">
+        <button class="secondary" id="repositionNasalBtn" type="button">Reposicionar 0</button>
+        <button class="primary small" id="confirmNasalBtn" type="button" disabled>Fixar ponto 0</button>
       </div>
 
       <div class="button-row">
