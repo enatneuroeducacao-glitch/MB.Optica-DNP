@@ -155,13 +155,14 @@ function renderMeasurementRuler(){
   for(let mm=-maxMm;mm<=maxMm+0.001;mm+=step){
     const x=center+mm*pxPerMm;
     if(x<0||x>s.width)continue;
-    const major=mm%10===0;
+    const major=mm===0||Math.abs(mm)%10===0||Math.abs(Math.abs(mm)-maxMm)<0.001;
     ticks.push('<span class="ruler-tick '+(major?'major':'')+'" style="left:'+x.toFixed(1)+'px"></span>');
     if(major)ticks.push('<span class="ruler-label" style="left:'+x.toFixed(1)+'px">'+(mm===0?'0':Math.abs(mm))+'</span>');
   }
   measurementRuler.innerHTML='<div class="ruler-line"></div>'+ticks.join('')+'<div class="ruler-zero">0</div><div class="ruler-title">−'+referenceWidthMm/2+' mm | 0 | +'+referenceWidthMm/2+' mm</div>';
 }
-\nfunction setCalibration(){
+
+function setCalibration(){
 
   const W=Number(referenceMmEl.value),H=Number(referenceHeightMmEl.value);
   if(!Number.isFinite(W)||W<10||W>300||!Number.isFinite(H)||H<10||H>300){
