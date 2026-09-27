@@ -354,12 +354,15 @@ button{cursor:pointer}
   .measurement-ruler .ruler-zero{width:25px;height:25px;font-size:9px}
 }
 
-/* O vídeo visível usa exatamente o mesmo recorte/zoom processado pelo FaceMesh. */
-@media(min-width:761px){
-  .viewer video,.viewer canvas{transform:scaleX(-1) scale(1.35);}
-}
-@media(max-width:760px){
-  .viewer video,.viewer canvas{transform:scaleX(-1) scale(1.35);}
+/* O campo óptico e o FaceMesh usam o mesmo plano de coordenadas.
+   O zoom é feito no recorte ROI, não por transform CSS, para não deslocar os marcadores. */
+.viewer video,.viewer canvas{transform:scaleX(-1);}
+.measurement-ruler .ruler-mode-label{
+  position:absolute;left:50%;top:5px;transform:translateX(-50%);
+  padding:4px 8px;border:1px solid rgba(85,214,255,.24);
+  border-radius:999px;background:rgba(4,12,22,.64);
+  color:rgba(210,240,255,.72);font-size:7px;font-weight:800;letter-spacing:.65px;
+  white-space:nowrap;
 }
 
 /* Régua DNP: 45 mm físicos, simétrica em torno do zero. */
@@ -368,3 +371,9 @@ button{cursor:pointer}
 /* Campo óptico final: somente a largura útil dos óculos. */
 .face-guide{inset:22% 10% 24% 10%}
 @media(max-width:760px){.face-guide{inset:20% 9% 22% 9%}}
+
+/* ===== MEDIÇÃO TIPO ARMAÇÃO ===== */
+.viewer.measurement-optical:before{
+  content:"";position:absolute;left:50%;top:50%;width:2px;height:62%;
+  transform:translate(-50%,-50%);background:rgba(255,204,102,.22);pointer-events:none;z-index:7;
+}
