@@ -15,7 +15,7 @@ const STABLE_FRAMES=24;
 const RIGHT_IRIS=468,LEFT_IRIS=473,NASAL=168,RIGHT_OUTER=33,LEFT_OUTER=263,FACE_LEFT=234,FACE_RIGHT=454,FACE_TOP=10,FACE_BOTTOM=152;
 const RIGHT_IRIS_EDGES=[469,470,471,472],LEFT_IRIS_EDGES=[474,475,476,477];
 const IRIS_DIAMETER_MM=11.7;
-const STORE_KEY="mb_dnp_facial_biometric_v26";
+const STORE_KEY="mb_dnp_facial_biometric_v28";
 
 function getView(){const r=viewer.getBoundingClientRect();return{w:r.width,h:r.height}}
 function resize(){const s=getView(),d=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(s.w*d);canvas.height=Math.round(s.h*d);canvas.style.width=s.w+"px";canvas.style.height=s.h+"px";ctx.setTransform(d,0,0,d,0,0)}
@@ -119,13 +119,15 @@ async function initLandmarker(){
  const base={modelAssetPath:"https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"};
  const common={runningMode:"VIDEO",numFaces:1,outputFaceBlendshapes:false,outputFacialTransformationMatrixes:true,minFaceDetectionConfidence:.55,minFacePresenceConfidence:.55,minTrackingConfidence:.55};
  try{
-   cameraStatus.textContent="Inicializando leitura facial • CPU…";
-   faceLandmarker=await FaceLandmarker.createFromOptions(vision,{baseOptions:{...base,delegate:"CPU"},...common});
- }catch(cpuError){
-   console.warn("MB DNP CPU:",cpuError);
-   cameraStatus.textContent="Inicializando leitura facial • GPU…";
+   cameraStatus.textContent="Inicializando motor facial • GPU…";
    faceLandmarker=await FaceLandmarker.createFromOptions(vision,{baseOptions:{...base,delegate:"GPU"},...common});
+ }catch(gpuError){
+   console.warn("MB DNP GPU:",gpuError);
+   cameraStatus.textContent="GPU indisponível • inicializando CPU…";
+   faceLandmarker=await FaceLandmarker.createFromOptions(vision,{baseOptions:{...base,delegate:"CPU"},...common});
  }
+ if(!faceLandmarker)throw new Error("Face Landmarker não foi inicializado.");
+ cameraStatus.textContent="Motor facial pronto • aguardando câmera";
 }
 
 async function initCamera(facing=cameraFacing){
@@ -201,8 +203,43 @@ function startDetection(){
  loop();
 }
 async function start(){
- try{intro.classList.add("hidden");workspace.classList.remove("hidden");setStep(1);resize();await initLandmarker();await initCamera("user");}
- catch(e){workspace.classList.remove("hidden");cameraStatus.textContent="Não foi possível iniciar a biometria: "+(e?.message||e);cameraQuality.textContent="Erro";cameraQuality.className="pill amber";captureBadge.textContent="ERRO DE INICIALIZAÇÃO";console.error(e)}
+ try{
+   intro.classList.add("hidden");
+   workspace.classList.remove("hidden");
+   setStep(1);
+   resize();
+   running=false;
+   samples=[];
+   currentReading=null;
+   useReadingBtn.disabled=true;
+   measurementState.textContent="Aguardando";
+   measurementState.className="pill";
+   readingCount.textContent="0/"+STABLE_FRAMES+" quadros";
+   odEl.textContent="—";oeEl.textContent="—";dnpEl.textContent="—";zeroMetric.textContent="—";
+   biometricNote.textContent="Inicializando câmera e motor facial…";
+   await initLandmarker();
+   await initCamera("user");
+   captureBadge.textContent="CENTRALIZE O ROSTO";
+   cameraQuality.textContent="Ativa";
+   cameraQuality.className="pill green";
+   cameraStatus.textContent="Câmera ativa • motor facial pronto • centralize o rosto";
+ }catch(e){
+   running=false;
+   if(detectionTimer)clearInterval(detectionTimer);
+   if(animationFrame)cancelAnimationFrame(animationFrame);
+   if(stream)stream.getTracks().forEach(t=>t.stop());
+   stream=null;
+   statusDot.classList.remove("on");
+   workspace.classList.remove("hidden");
+   cameraStatus.textContent="Falha ao iniciar: "+(e?.message||String(e));
+   cameraQuality.textContent="Erro";
+   cameraQuality.className="pill amber";
+   captureBadge.textContent="ERRO DE INICIALIZAÇÃO";
+   faceState.textContent="Motor indisponível";
+   faceState.className="pill amber";
+   biometricNote.textContent="Não foi possível carregar o motor de biometria facial.";
+   console.error("MB DNP inicialização:",e);
+ }
 }
 startBtn.addEventListener("click",start);
 frontBtn.addEventListener("click",async()=>{
@@ -265,4 +302,4 @@ $("saveDraftBtn").addEventListener("click",()=>{if(!customerName.value.trim()){o
 $("generateOsBtn").addEventListener("click",()=>{if(!customerName.value.trim()){osValidation.textContent="Informe o nome do cliente.";osValidation.className="validation error";osValidation.classList.remove("hidden");return}const os=saveOs();savedTitle.textContent="O.S. "+os.number;savedSummary.textContent=customerName.value+" • DNP "+os.measurement.dnpMm.toFixed(1)+" mm • OD "+os.measurement.odMm.toFixed(1)+" mm • OE "+os.measurement.oeMm.toFixed(1)+" mm.";savedPanel.classList.remove("hidden");osPanel.classList.add("hidden");savedPanel.scrollIntoView({behavior:"smooth",block:"start"})});
 $("printBtn").addEventListener("click",()=>{if(!currentOs)return;const m=currentOs.measurement,c=currentOs.customer,w=window.open("","_blank","width=800,height=700");w.document.write("<html><head><title>"+currentOs.number+"</title><style>body{font-family:Arial;padding:32px;color:#111}.box{border:1px solid #aaa;padding:16px;margin:12px 0}.big{font-size:28px;font-weight:800}</style></head><body><h1>MB.Óptica — O.S.</h1>"+currentOs.number+"<div class=box><b>Cliente</b><br>"+c.name+"<br>"+c.phone+" "+c.cpf+"</div><div class=box><b>Biometria facial</b><div class=big>DNP "+m.dnpMm.toFixed(1)+" mm</div>OD "+m.odMm.toFixed(1)+" mm • OE "+m.oeMm.toFixed(1)+" mm • DP "+m.dpMm.toFixed(1)+" mm</div><div class=box>Método: Face Landmarker + escala biométrica pela íris • 24 quadros estáveis • referência nasal automática (landmark "+m.referenceNasalLandmark+")</div></body></html>");w.document.close();w.print()});
 $("anotherBtn").addEventListener("click",()=>location.reload());
-$("settingsBtn").addEventListener("click",()=>alert("MB DNP v27 • biometria facial • dados locais neste dispositivo"));
+$("settingsBtn").addEventListener("click",()=>alert("MB DNP v28 • biometria facial • dados locais neste dispositivo"));
