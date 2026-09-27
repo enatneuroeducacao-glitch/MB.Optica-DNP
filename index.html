@@ -1,232 +1,124 @@
 <!doctype html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#07111f">
-  <meta name="description" content="MB.Óptica DNP — medição de distância naso-pupilar com calibração física e geração de O.S.">
-  <title>MB.Óptica DNP</title>
-  <link rel="stylesheet" href="./style.css?v=20260927-17">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#07111f">
+<meta name="description" content="MB.Óptica DNP — biometria facial para medição DNP e geração de O.S.">
+<title>MB.Óptica DNP</title>
+<link rel="stylesheet" href="./style.css?v=20260927-18">
 </head>
 <body>
 <main class="app">
-  <header class="topbar">
-    <div class="brand-wrap">
-      <div class="brand">MB.Óptica</div>
-      <div class="subtitle">DNP • medição e ordem de serviço</div>
+<header class="topbar">
+  <div><div class="brand">MB.Óptica</div><div class="subtitle">DNP • biometria facial</div></div>
+  <div class="header-actions"><span class="status-dot" id="statusDot"></span><button class="icon-btn" id="settingsBtn" type="button">⚙</button></div>
+</header>
+
+<nav class="stepper">
+  <div class="step active" data-step="1"><b>1</b><span>Capturar</span></div>
+  <div class="step" data-step="2"><b>2</b><span>Analisar</span></div>
+  <div class="step" data-step="3"><b>3</b><span>Medir</span></div>
+  <div class="step" data-step="4"><b>4</b><span>O.S.</span></div>
+</nav>
+
+<section class="card intro" id="intro">
+  <div class="eyebrow">MB DNP • NOVA ARQUITETURA</div>
+  <h1>Biometria facial para DNP</h1>
+  <p>O MB DNP passa a usar o rosto como referência geométrica principal. A câmera localiza olhos, pupilas, ponte nasal e outros pontos faciais; uma única referência física fornece a escala em milímetros.</p>
+  <div class="feature-grid">
+    <div><strong>Biometria facial</strong><span>Face Mesh + geometria ocular e nasal</span></div>
+    <div><strong>OD + OE + DP</strong><span>Leitura monocular e binocular</span></div>
+    <div><strong>Estabilidade</strong><span>24 quadros antes de aceitar a leitura</span></div>
+  </div>
+  <div class="notice"><strong>Validação</strong><span>É um protótipo técnico. Antes do uso profissional, compare repetidamente com pupilômetro ou outro instrumento de referência e documente o erro observado.</span></div>
+  <button class="primary" id="startBtn" type="button">Iniciar captura</button>
+</section>
+
+<section class="workspace hidden" id="workspace">
+  <section class="viewer" id="viewer">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="overlay"></canvas>
+    <button class="ref-handle hidden" id="refLeft" type="button" aria-label="Início da referência física"></button>
+    <button class="ref-handle hidden" id="refRight" type="button" aria-label="Fim da referência física"></button>
+    <button class="nasal-handle hidden" id="nasalHandle" type="button" aria-label="Ponto zero da ponte nasal"></button>
+    <div class="face-guide" id="faceGuide">
+      <div class="guide-title">POSICIONE OS OLHOS NESTA FAIXA</div>
+      <div class="guide-subtitle">rosto frontal • olhos e ponte visíveis • cabeça reta • expressão natural</div>
     </div>
-    <div class="header-actions">
-      <span class="status-dot" id="statusDot" title="Câmera"></span>
-      <button class="icon-btn" id="settingsBtn" type="button" title="Configurações">⚙</button>
-    </div>
-  </header>
-
-  <nav class="stepper" aria-label="Etapas">
-    <div class="step active" data-step="1"><b>1</b><span>Preparar</span></div>
-    <div class="step" data-step="2"><b>2</b><span>Calibrar</span></div>
-    <div class="step" data-step="3"><b>3</b><span>Medir</span></div>
-    <div class="step" data-step="4"><b>4</b><span>O.S.</span></div>
-  </nav>
-
-  <section class="card intro" id="intro">
-    <div class="eyebrow">LEITOR DNP</div>
-    <h1>Medição biométrica de DNP</h1>
-    <p>O MB.Óptica DNP combina biometria facial, localização das pupilas e uma referência física conhecida para transformar a captura da câmera em milímetros. O fluxo foi redesenhado para trabalhar com um cartão padrão como referência métrica.</p>
-
-    <div class="feature-grid">
-      <div><strong>OD + OE</strong><span>DNP monocular e binocular</span></div>
-      <div><strong>Adulto + infantil</strong><span>Sem corte artificial de 25 mm</span></div>
-      <div><strong>Biometria + escala</strong><span>Rosto mapeado + cartão de referência</span></div>
-    </div>
-
-    <div class="notice">
-      <strong>Importante</strong>
-      <span>O resultado depende da qualidade da captura, calibração e posicionamento. Este projeto é um protótipo de apoio ao atendimento e deve ser validado contra um instrumento de referência antes do uso profissional.</span>
-    </div>
-
-    <button class="primary" id="startBtn" type="button">Iniciar atendimento</button>
+    <div class="capture-badge" id="captureBadge">CÂMERA</div>
   </section>
 
-  <section class="workspace hidden" id="workspace">
-    <section class="viewer" id="viewer">
-      <video id="video" autoplay playsinline muted></video>
-      <canvas id="overlay"></canvas>
-      <button class="nasal-handle hidden" id="nasalHandle" type="button" aria-label="Ponto 0 da ponte da armação"></button>
-      <div class="face-guide" id="faceGuide">
-        <div class="guide-title">ENQUADRE COMO SE FOSSEM OS ÓCULOS</div>
-        <div class="guide-subtitle">somente olhos + ponte • mantenha esta faixa horizontal preenchida</div>
-      </div>
-      <div class="measurement-ruler hidden" id="measurementRuler" aria-label="Régua métrica da medição DNP"></div>
-      <div class="calibration-overlay hidden" id="calibrationOverlay">
-        <div class="cal-rect"></div>
-        <div class="cal-centerline"></div>
-        <button class="cal-handle" id="handleTL" type="button" aria-label="Canto superior esquerdo"></button>
-        <button class="cal-handle" id="handleTR" type="button" aria-label="Canto superior direito"></button>
-        <button class="cal-handle" id="handleBR" type="button" aria-label="Canto inferior direito"></button>
-        <button class="cal-handle" id="handleBL" type="button" aria-label="Canto inferior esquerdo"></button>
-        <span class="cal-label" id="calLabel">Alinhe os 4 pontos aos cantos do cartão</span>
-      </div>
-    </section>
-
-    <section class="card camera-controls">
-      <div class="section-title-row">
-        <div>
-          <div class="eyebrow">CÂMERA</div>
-          <h2 id="cameraTitle">Frontal</h2>
-        </div>
-        <span class="pill" id="cameraQuality">Aguardando</span>
-      </div>
-      <div class="camera-buttons">
-        <button class="camera-btn active" id="frontBtn" type="button">Frontal</button>
-        <button class="camera-btn" id="rearBtn" type="button">Traseira</button>
-      </div>
-      <div class="camera-status" id="cameraStatus">Câmera frontal selecionada</div>
-    </section>
-
-    <section class="card panel" id="calibrationPanel">
-      <div class="section-title-row">
-        <div>
-          <div class="eyebrow">ETAPA 2</div>
-          <h2>Referência física</h2>
-        </div>
-        <span class="pill amber" id="calibrationState">Não calibrado</span>
-      </div>
-
-      <p class="helper">Use um cartão padrão ID-1 (cartão bancário/CRLV no formato padrão) próximo ao rosto, visível na câmera. A largura e a altura conhecidas do cartão fornecem a escala física; os 4 pontos corrigem a perspectiva. Depois, a biometria facial localiza as pupilas e o ponto 0 da ponte.</p>
-
-      <div class="field-row">
-        <label>
-          <span>Largura da referência</span>
-          <div class="input-suffix"><input id="referenceMm" value="45"><em>mm</em></div>
-        </label>
-        <label>
-          <span>Altura da referência</span>
-          <div class="input-suffix"><input id="referenceHeightMm" type="number" min="10" max="300" step="0.1" value="53.98"><em>mm</em></div>
-        </label>
-      </div>
-      <div class="calibration-readout wide">
-        <span>Plano métrico</span>
-        <strong id="scaleValue">Aguardando 4 pontos</strong>
-      </div>
-
-      <ol class="compact-list">
-        <li>Coloque a referência horizontalmente, próxima ao plano dos olhos.</li>
-        <li>Arraste os 4 marcadores azuis para os quatro cantos do retângulo.</li>
-        <li>O sistema corrige perspectiva e transforma a imagem para milímetros.</li>
-      </ol>
-
-      <div class="button-row">
-        <button class="secondary" id="repositionBtn" type="button">Reiniciar pontos</button>
-        <button class="primary small" id="confirmCalibrationBtn" type="button">Confirmar calibração</button>
-      </div>
-      <div class="validation" id="calibrationValidation">Aguardando os quatro cantos da referência.</div>
-    </section>
-
-    <section class="card panel hidden" id="measurementPanel">
-      <div class="section-title-row">
-        <div>
-          <div class="eyebrow">ETAPA 3</div>
-          <h2>Medição DNP</h2>
-        </div>
-        <span class="pill" id="measurementState">Aguardando</span>
-      </div>
-
-      <div class="quality-grid">
-        <div><span>Rosto</span><strong id="faceState">—</strong></div>
-        <div><span>Estabilidade</span><strong id="stabilityState">—</strong></div>
-        <div><span>Alinhamento</span><strong id="alignmentState">—</strong></div>
-      </div>
-
-      <div class="measure-grid">
-        <div class="measure"><span>OD</span><strong id="od">—</strong><small>monocular direita</small></div>
-        <div class="measure"><span>OE</span><strong id="oe">—</strong><small>monocular esquerda</small></div>
-        <div class="measure total"><span>DNP</span><strong id="dnp">—</strong><small>binocular</small></div>
-      </div>
-
-      <div class="reading-meta">
-        <span id="readingCount">0/24 frames</span>
-        <span id="readingNote">Aguardando rosto</span>
-      </div>
-      <div class="nasal-reference">
-        <div><span>PONTO 0</span><strong>ponte da armação</strong></div>
-        <span id="nasalReferenceValue">Posicione e fixe o ponto 0</span>
-      </div>
-      <div class="button-row nasal-actions">
-        <button class="secondary" id="repositionNasalBtn" type="button">Reposicionar 0</button>
-        <button class="primary small" id="confirmNasalBtn" type="button" disabled>Fixar ponto 0</button>
-      </div>
-
-      <div class="button-row">
-        <button class="secondary" id="newReadingBtn" type="button">Nova leitura</button>
-        <button class="primary small" id="useReadingBtn" type="button" disabled>Usar esta DNP</button>
-      </div>
-    </section>
-
-    <section class="card panel hidden" id="osPanel">
-      <div class="section-title-row">
-        <div>
-          <div class="eyebrow">ETAPA 4</div>
-          <h2>Cliente e O.S.</h2>
-        </div>
-        <span class="pill green" id="osState">Rascunho</span>
-      </div>
-
-      <p class="helper">O cadastro é feito após a venda. Nesta versão o atendimento fica salvo localmente no dispositivo e já segue a estrutura necessária para futura integração com o MB Gestão Inteligente.</p>
-
-      <div class="form-grid">
-        <label class="full"><span>Cliente *</span><input id="customerName" type="text" placeholder="Nome completo"></label>
-        <label><span>Telefone</span><input id="customerPhone" type="tel" placeholder="(00) 00000-0000"></label>
-        <label><span>CPF</span><input id="customerCpf" type="text" placeholder="000.000.000-00"></label>
-        <label><span>Nº da venda</span><input id="saleNumber" type="text" placeholder="Venda / cupom"></label>
-        <label><span>Tipo</span>
-          <select id="customerType">
-            <option value="adulto">Adulto</option>
-            <option value="infantil">Infantil</option>
-          </select>
-        </label>
-        <label class="full"><span>Observações</span><textarea id="customerNotes" rows="3" placeholder="Observações do atendimento"></textarea></label>
-      </div>
-
-      <div class="os-preview">
-        <div><span>O.S.</span><strong id="osNumber">Será gerada ao salvar</strong></div>
-        <div><span>DNP</span><strong id="osDnp">—</strong></div>
-        <div><span>OD / OE</span><strong id="osMono">— / —</strong></div>
-      </div>
-
-      <div class="button-row">
-        <button class="secondary" id="saveDraftBtn" type="button">Salvar rascunho</button>
-        <button class="primary small" id="generateOsBtn" type="button">Gerar O.S.</button>
-      </div>
-      <div class="validation hidden" id="osValidation"></div>
-    </section>
-
-    <section class="card panel hidden" id="savedPanel">
-      <div class="success-mark">✓</div>
-      <div class="eyebrow">ATENDIMENTO REGISTRADO</div>
-      <h2 id="savedTitle">O.S. criada</h2>
-      <p class="helper" id="savedSummary"></p>
-      <div class="button-row">
-        <button class="secondary" id="printBtn" type="button">Imprimir O.S.</button>
-        <button class="primary small" id="anotherBtn" type="button">Novo atendimento</button>
-      </div>
-    </section>
+  <section class="card camera-controls">
+    <div class="section-title-row"><div><div class="eyebrow">CAPTURA</div><h2>Biometria facial</h2></div><span class="pill" id="cameraQuality">Aguardando</span></div>
+    <div class="camera-buttons"><button class="camera-btn active" id="frontBtn" type="button">Frontal</button><button class="camera-btn" id="rearBtn" type="button">Traseira</button></div>
+    <div class="camera-status" id="cameraStatus">A câmera será iniciada ao tocar em Iniciar captura.</div>
   </section>
 
-  <section class="card settings-panel hidden" id="settingsPanel">
-    <div class="section-title-row">
-      <div><div class="eyebrow">SISTEMA</div><h2>Configurações locais</h2></div>
-      <button class="icon-btn close" id="closeSettingsBtn" type="button">×</button>
+  <section class="card panel" id="referencePanel">
+    <div class="section-title-row"><div><div class="eyebrow">ESCALA FÍSICA</div><h2>Uma única referência</h2></div><span class="pill amber" id="referenceState">Aguardando</span></div>
+    <p class="helper">Use um cartão padrão ID-1 de <b>85,60 mm de largura</b>. Coloque-o próximo ao plano dos olhos, horizontalmente e de frente para a câmera. Não precisamos dos quatro cantos: marque somente as duas extremidades da largura.</p>
+    <div class="reference-readout"><span>Referência</span><strong>85,60 mm</strong><em id="referencePx">— px</em></div>
+    <ol class="compact-list">
+      <li>Deixe a largura inteira do cartão visível na faixa da câmera.</li>
+      <li>Arraste os dois marcadores sobre as extremidades esquerda e direita do cartão.</li>
+      <li>Confirme a escala. Ela será aplicada à geometria facial, não à calibração de um retângulo.</li>
+    </ol>
+    <div class="button-row"><button class="secondary" id="resetReferenceBtn" type="button">Reposicionar referência</button><button class="primary small" id="confirmReferenceBtn" type="button">Confirmar escala</button></div>
+    <div class="validation" id="referenceValidation">Aguardando as duas extremidades da referência.</div>
+  </section>
+
+  <section class="card panel hidden" id="measurementPanel">
+    <div class="section-title-row"><div><div class="eyebrow">ANÁLISE BIOMÉTRICA</div><h2>Medição DNP</h2></div><span class="pill" id="measurementState">Aguardando</span></div>
+    <div class="quality-grid">
+      <div><span>Rosto</span><strong id="faceState">—</strong></div>
+      <div><span>Pose</span><strong id="poseState">—</strong></div>
+      <div><span>Estabilidade</span><strong id="stabilityState">—</strong></div>
+      <div><span>Escala</span><strong id="scaleState">—</strong></div>
     </div>
-    <div class="settings-item"><span>Última calibração</span><strong id="lastCalibration">Nenhuma</strong></div>
-    <div class="settings-item"><span>Atendimentos locais</span><strong id="localCount">0</strong></div>
-    <button class="secondary" id="clearLocalBtn" type="button">Limpar dados locais</button>
+    <div class="measure-grid">
+      <div class="measure"><span>OD</span><strong id="od">—</strong><small>ponte → pupila direita</small></div>
+      <div class="measure"><span>OE</span><strong id="oe">—</strong><small>ponte → pupila esquerda</small></div>
+      <div class="measure total"><span>DNP</span><strong id="dnp">—</strong><small>binocular</small></div>
+    </div>
+    <div class="reading-meta"><span id="readingCount">0/24 quadros</span><span id="readingNote">Aguardando captura</span></div>
+    <div class="nasal-reference"><div><span>PONTO 0</span><strong>apoio da ponte / referência nasal</strong></div><span id="nasalReferenceValue">Posicione o zero</span></div>
+    <div class="button-row"><button class="secondary" id="repositionNasalBtn" type="button">Reposicionar 0</button><button class="secondary" id="newReadingBtn" type="button">Nova leitura</button><button class="primary small" id="useReadingBtn" type="button" disabled>Usar esta DNP</button></div>
   </section>
 
-  <footer class="footer">MB.Óptica DNP • protótipo funcional • calibração e validação obrigatórias antes do uso profissional</footer>
+  <section class="card panel hidden" id="osPanel">
+    <div class="section-title-row"><div><div class="eyebrow">ORDEM DE SERVIÇO</div><h2>Cliente e O.S.</h2></div><span class="pill green" id="osState">Rascunho</span></div>
+    <p class="helper">O cadastro continua depois da venda. A medição é guardada junto à O.S. localmente e já usa uma estrutura preparada para futura integração com o MB Gestão Inteligente.</p>
+    <div class="form-grid">
+      <label class="full"><span>Cliente *</span><input id="customerName" type="text" placeholder="Nome completo"></label>
+      <label><span>Telefone</span><input id="customerPhone" type="tel" placeholder="(00) 00000-0000"></label>
+      <label><span>CPF</span><input id="customerCpf" type="text" placeholder="000.000.000-00"></label>
+      <label><span>Nº da venda</span><input id="saleNumber" type="text" placeholder="Venda / cupom"></label>
+      <label><span>Tipo</span><select id="customerType"><option value="adulto">Adulto</option><option value="infantil">Infantil</option></select></label>
+      <label class="full"><span>Observações</span><textarea id="customerNotes" rows="3" placeholder="Observações do atendimento"></textarea></label>
+    </div>
+    <div class="os-preview"><div><span>O.S.</span><strong id="osNumber">Será gerada ao salvar</strong></div><div><span>DNP</span><strong id="osDnp">—</strong></div><div><span>OD / OE</span><strong id="osMono">— / —</strong></div></div>
+    <div class="button-row"><button class="secondary" id="saveDraftBtn" type="button">Salvar rascunho</button><button class="primary small" id="generateOsBtn" type="button">Gerar O.S.</button></div>
+    <div class="validation hidden" id="osValidation"></div>
+  </section>
+
+  <section class="card panel hidden" id="savedPanel">
+    <div class="success-mark">✓</div><div class="eyebrow">ATENDIMENTO REGISTRADO</div><h2 id="savedTitle">O.S. criada</h2><p class="helper" id="savedSummary"></p>
+    <div class="button-row"><button class="secondary" id="printBtn" type="button">Imprimir O.S.</button><button class="primary small" id="anotherBtn" type="button">Novo atendimento</button></div>
+  </section>
+</section>
+
+<section class="card settings-panel hidden" id="settingsPanel">
+  <div class="section-title-row"><div><div class="eyebrow">SISTEMA</div><h2>Dados locais</h2></div><button class="icon-btn close" id="closeSettingsBtn" type="button">×</button></div>
+  <div class="settings-item"><span>Última leitura</span><strong id="lastMeasurement">Nenhuma</strong></div>
+  <div class="settings-item"><span>Atendimentos locais</span><strong id="localCount">0</strong></div>
+  <button class="secondary" id="clearLocalBtn" type="button">Limpar dados locais</button>
+</section>
+
+<footer class="footer">MB.Óptica DNP • protótipo biométrico • validar contra instrumento de referência antes do uso profissional</footer>
 </main>
-
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-<script src="./app.js?v=20260927-17"></script>
+<script src="./app.js?v=20260927-18"></script>
 </body>
 </html>
