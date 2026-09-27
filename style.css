@@ -116,3 +116,18 @@ button{cursor:pointer}
   .workspace:has(#osPanel:not(.hidden)) #calibrationPanel,
   .workspace:has(#osPanel:not(.hidden)) #measurementPanel{display:none}
 }
+
+/* Calibração métrica por quatro cantos */
+.cal-rect{position:absolute;border:2px solid rgba(85,214,255,.85);background:rgba(85,214,255,.04);pointer-events:none;box-shadow:0 0 14px rgba(85,214,255,.16)}
+.cal-centerline{position:absolute;width:2px;background:rgba(255,204,102,.75);pointer-events:none}
+.nasal-handle{position:absolute;width:30px;height:30px;border-radius:50%;padding:0;background:#231d11;border:3px solid #ffcc66;box-shadow:0 0 0 6px rgba(255,204,102,.16);z-index:12;touch-action:none}
+.nasal-handle:after{content:"0";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);color:#ffdf8a;font-weight:900;font-size:10px}
+.nasal-reference{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:10px;padding:10px 12px;border:1px solid #5b4a2b;border-radius:11px;background:#17140e}
+.nasal-reference span{color:#f2cf7d;font-size:9px}
+.nasal-reference strong{display:block;color:#f5e1aa;font-size:11px;margin-top:3px}
+.nasal-actions{margin-top:8px}
+.calibration-readout.wide{margin-top:10px}
+@media(max-width:760px){
+  .nasal-reference{padding:9px 10px}
+  .nasal-reference strong{font-size:10px}
+}
