@@ -1,5 +1,3 @@
-import {FilesetResolver,FaceLandmarker} from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/+esm";
-
 const $=id=>document.getElementById(id);
 const video=$("video"),canvas=$("overlay"),ctx=canvas.getContext("2d"),viewer=$("viewer");
 const startBtn=$("startBtn"),intro=$("intro"),workspace=$("workspace"),statusDot=$("statusDot");
@@ -10,12 +8,12 @@ const rightMetric=$("rightMetric"),leftMetric=$("leftMetric"),noseMetric=$("nose
 const measurementState=$("measurementState"),odEl=$("od"),oeEl=$("oe"),dnpEl=$("dnp"),readingCount=$("readingCount"),readingNote=$("readingNote"),zeroMetric=$("zeroMetric"),useReadingBtn=$("useReadingBtn");
 const osPanel=$("osPanel"),customerName=$("customerName"),customerPhone=$("customerPhone"),customerCpf=$("customerCpf"),saleNumber=$("saleNumber"),customerType=$("customerType"),customerNotes=$("customerNotes"),osNumber=$("osNumber"),osDnp=$("osDnp"),osMono=$("osMono"),osValidation=$("osValidation");
 const savedPanel=$("savedPanel"),savedTitle=$("savedTitle"),savedSummary=$("savedSummary");
-let stream=null,running=false,faceLandmarker=null,lastVideoTime=-1,animationFrame=0,currentReading=null,samples=[];
+let stream=null,running=false,faceLandmarker=null,lastVideoTime=-1,animationFrame=0,currentReading=null,samples=[],lastTimestampMs=0;
 let cameraFacing="user",currentGeometry=null,currentScale=null,currentOs=null;
 const STABLE_FRAMES=24;
 const RIGHT_IRIS=468,LEFT_IRIS=473,NASAL=168,RIGHT_OUTER=33,LEFT_OUTER=263,FACE_LEFT=234,FACE_RIGHT=454,FACE_TOP=10,FACE_BOTTOM=152;
 const CANONICAL_EYE_OUTER_CM=8.891718;
-const STORE_KEY="mb_dnp_facial_biometric_v20";
+const STORE_KEY="mb_dnp_facial_biometric_v21";
 
 function getView(){const r=viewer.getBoundingClientRect();return{w:r.width,h:r.height}}
 function resize(){const s=getView(),d=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(s.w*d);canvas.height=Math.round(s.h*d);canvas.style.width=s.w+"px";canvas.style.height=s.h+"px";ctx.setTransform(d,0,0,d,0,0)}
@@ -104,23 +102,31 @@ function updateBiometric(g,lm){
 
 async function initLandmarker(){
  if(faceLandmarker)return;
- cameraStatus.textContent="Carregando modelo facial…";
- const vision=await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm");
- faceLandmarker=await FaceLandmarker.createFromOptions(vision,{baseOptions:{modelAssetPath:"https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",delegate:"GPU"},runningMode:"VIDEO",numFaces:1,outputFaceBlendshapes:false,outputFacialTransformationMatrixes:true,minFaceDetectionConfidence:.65,minFacePresenceConfidence:.65,minTrackingConfidence:.65});
+ cameraStatus.textContent="Carregando motor facial…";
+ const {FilesetResolver,FaceLandmarker}=await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304/+esm");
+ const vision=await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304/wasm");
+ const options={baseOptions:{modelAssetPath:"https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",delegate:"GPU"},runningMode:"VIDEO",numFaces:1,outputFaceBlendshapes:false,outputFacialTransformationMatrixes:true,minFaceDetectionConfidence:.65,minFacePresenceConfidence:.65,minTrackingConfidence:.65};
+ try{
+   faceLandmarker=await FaceLandmarker.createFromOptions(vision,options);
+ }catch(gpuError){
+   cameraStatus.textContent="GPU indisponível • usando processamento compatível…";
+   options.baseOptions.delegate="CPU";
+   faceLandmarker=await FaceLandmarker.createFromOptions(vision,options);
+ }
 }
 
 async function initCamera(facing=cameraFacing){
  if(stream)stream.getTracks().forEach(t=>t.stop());
  cameraFacing=facing;
  stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:facing},width:{ideal:1280},height:{ideal:720}},audio:false});
- video.srcObject=stream;await video.play();resize();statusDot.classList.add("on");cameraStatus.textContent="Câmera ativa • centralize o rosto";cameraQuality.textContent="Ativa";running=true;lastVideoTime=-1;loop();
+ video.srcObject=stream;await video.play();resize();statusDot.classList.add("on");cameraStatus.textContent="Câmera ativa • centralize o rosto";cameraQuality.textContent="Ativa";running=true;lastVideoTime=-1;lastTimestampMs=0;loop();
 }
 
 function loop(){
  if(!running)return;
  if(video.readyState>=2&&video.currentTime!==lastVideoTime&&faceLandmarker){
    lastVideoTime=video.currentTime;
-   const result=faceLandmarker.detectForVideo(video,performance.now());
+   const nowMs=Math.round(performance.now()); const timestampMs=nowMs<=lastTimestampMs?lastTimestampMs+1:nowMs; lastTimestampMs=timestampMs; const result=faceLandmarker.detectForVideo(video,timestampMs);
    if(result.faceLandmarks?.length){
      const g=geometryFromResult(result);
      if(g){currentGeometry=g;drawBiometricMap(result.faceLandmarks[0],g);const q=quality(g);cameraQuality.textContent=q.good?"Boa captura":"Ajustar";captureBadge.textContent=q.good?"ROSTO MAPEADO":"AJUSTE DE POSE";updateBiometric(g,result.faceLandmarks[0]);}
@@ -133,7 +139,7 @@ function loop(){
 
 async function start(){
  try{intro.classList.add("hidden");workspace.classList.remove("hidden");setStep(1);resize();await initLandmarker();await initCamera("user");}
- catch(e){cameraStatus.textContent="Erro ao iniciar biometria: "+e.message;console.error(e)}
+ catch(e){workspace.classList.remove("hidden");cameraStatus.textContent="Não foi possível iniciar a biometria: "+(e?.message||e);cameraQuality.textContent="Erro";cameraQuality.className="pill amber";captureBadge.textContent="ERRO DE INICIALIZAÇÃO";console.error(e)}
 }
 startBtn.addEventListener("click",start);
 frontBtn.addEventListener("click",()=>{frontBtn.classList.add("active");rearBtn.classList.remove("active");initCamera("user")});
