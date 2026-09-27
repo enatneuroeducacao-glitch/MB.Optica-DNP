@@ -193,7 +193,10 @@ function drawIris(lm,cid,rids){
 }
 function drawLensFrame(center,label,side){
   const w=170,h=112;
-  const x=center.x+(side==="OD"?-w-18:18),y=center.y-h/2;
+  // Na câmera frontal espelhada, o lado esquerdo da tela corresponde ao OD do usuário
+  // e o lado direito ao OE. O quadro é ancorado pela pupila detectada.
+  const x=side==="OD" ? center.x-w-18 : center.x+18;
+  const y=center.y-h/2;
   const radius=28;
   ctx.save();
   ctx.strokeStyle="rgba(85,214,255,.78)";ctx.lineWidth=2;
@@ -249,6 +252,13 @@ function addSample(lm,right,left,nasalView){
   // Para uma leitura válida, a ponte precisa ficar entre as duas pupilas.
   if(!(r.x<nasal.x&&nasal.x<l.x))return;
   if(![od,oe,dnp].every(Number.isFinite)||od<0||oe<0||dnp<=0)return;
+  // Evita aceitar leituras obviamente incompatíveis com a geometria capturada.
+  // Não impõe mínimo de DNP; apenas bloqueia escala degenerada.
+  if(dnp<20||dnp>100){
+    readingNote.textContent="Escala fora da faixa de validação. Refaça a calibração física.";
+    useReadingBtn.disabled=true;
+    return;
+  }
   samples.push({odMm:od,oeMm:oe,dnpMm:dnp,nasalX:nasal.x});if(samples.length>STABLE_FRAMES)samples.shift();
   readingCount.textContent=samples.length+"/"+STABLE_FRAMES+" frames";
   if(samples.length<STABLE_FRAMES){measurementState.textContent="Estabilizando";measurementState.className="pill";stabilityState.textContent=Math.round(samples.length/STABLE_FRAMES*100)+"%";readingNote.textContent="Mantenha o rosto imóvel";useReadingBtn.disabled=true;return}
@@ -265,7 +275,14 @@ function addSample(lm,right,left,nasalView){
 function onResults(res){
   const s=getViewSize();
   if(!measurementRuler.classList.contains("hidden")&&calibration)renderMeasurementRuler();if(canvas.width!==Math.round(s.width)||canvas.height!==Math.round(s.height)){canvas.width=Math.round(s.width);canvas.height=Math.round(s.height)}
-  ctx.clearRect(0,0,canvas.width,canvas.height);
+  // O fundo do canvas já contém o ROI recortado desenhado por processFrame().
+  // Aqui apagamos somente os elementos anteriores desenhando a imagem ROI novamente.
+  if(roiCanvas.width===canvas.width&&roiCanvas.height===canvas.height){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(roiCanvas,0,0,canvas.width,canvas.height);
+  }else{
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+  }
   if(!res.multiFaceLandmarks?.length){faceState.textContent="Não detectado";alignmentState.textContent="—";statusDot.classList.remove("active");measurementState.textContent=calibration?"Aguardando":"Calibre primeiro";readingNote.textContent="Centralize o rosto dentro da área";return}
   const lm=res.multiFaceLandmarks[0],right=point(lm,RIGHT_IRIS_CENTER_ID),left=point(lm,LEFT_IRIS_CENTER_ID);if(!right||!left){faceState.textContent="Olhos não detectados";return}
   drawContour(lm,RIGHT_EYE_CONTOUR);drawContour(lm,LEFT_EYE_CONTOUR);
@@ -310,7 +327,19 @@ async function processFrame(){
   if(!running)return;
   if(video.readyState>=2){
     try{
-      drawMeasurementRoi();
+      const roi=drawMeasurementRoi();
+      if(roi){
+        const s=getViewSize();
+        if(canvas.width!==Math.round(s.width)||canvas.height!==Math.round(s.height)){
+          canvas.width=Math.round(s.width);canvas.height=Math.round(s.height)
+        }
+        // O canvas visível passa a ser a própria imagem recortada.
+        // Assim o operador vê exatamente o mesmo plano que o FaceMesh mede.
+        ctx.save();
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        ctx.drawImage(roiCanvas,0,0,canvas.width,canvas.height);
+        ctx.restore();
+      }
       await faceMesh.send({image:roiCanvas});
     }catch(e){console.error(e)}
   }
