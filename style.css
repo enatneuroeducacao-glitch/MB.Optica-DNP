@@ -200,3 +200,86 @@ button{cursor:pointer}
   background:rgba(4,12,22,.72);color:rgba(200,235,255,.82);
   font-size:8px;font-weight:800;letter-spacing:.7px;pointer-events:none;
 }
+
+
+/* ===== DESKTOP: câmera fixa à esquerda + controles em coluna lateral ===== */
+@media(min-width:761px){
+  .app{width:min(1600px,calc(100vw - 36px));padding:16px 18px 30px}
+  .workspace{
+    display:grid !important;
+    grid-template-columns:minmax(0,1fr) minmax(400px,460px) !important;
+    grid-auto-flow:row;
+    gap:14px 16px;
+    align-items:start;
+  }
+  .workspace .viewer{
+    grid-column:1 !important;
+    grid-row:1 / span 2 !important;
+    width:100% !important;
+    min-width:0;
+    aspect-ratio:16/7 !important;
+    min-height:0 !important;
+    max-height:none !important;
+  }
+  .workspace .camera-controls{
+    grid-column:2 !important;
+    grid-row:1 !important;
+    width:100%;
+  }
+  .workspace #calibrationPanel{
+    grid-column:2 !important;
+    grid-row:2 !important;
+    width:100%;
+  }
+  .workspace #measurementPanel{
+    grid-column:2 !important;
+    grid-row:1 / span 2 !important;
+    width:100%;
+    position:sticky;
+    top:12px;
+  }
+  .workspace #osPanel,
+  .workspace #savedPanel{
+    grid-column:1 / -1 !important;
+    grid-row:auto !important;
+  }
+
+  /* Depois da calibração: não muda o tamanho nem a posição da câmera. */
+  .workspace.measurement-mode{
+    grid-template-columns:minmax(0,1fr) minmax(400px,460px) !important;
+  }
+  .workspace.measurement-mode .camera-controls,
+  .workspace.measurement-mode #calibrationPanel{
+    display:none !important;
+  }
+  .workspace.measurement-mode .viewer{
+    grid-column:1 !important;
+    grid-row:1 !important;
+  }
+  .workspace.measurement-mode #measurementPanel{
+    display:block !important;
+    grid-column:2 !important;
+    grid-row:1 !important;
+  }
+  .workspace.measurement-mode .measure-grid{
+    grid-template-columns:1fr 1fr 1.15fr;
+    gap:8px;
+  }
+  .workspace.measurement-mode .measure{
+    padding:15px 8px;
+  }
+  .workspace.measurement-mode .measure strong{
+    font-size:29px;
+  }
+  .workspace.measurement-mode .button-row{
+    grid-template-columns:1fr 1fr;
+  }
+}
+
+/* A coluna lateral não interfere no enquadramento óptico. */
+@media(min-width:761px){
+  .viewer video,
+  .viewer canvas{
+    height:100%;
+  }
+}
