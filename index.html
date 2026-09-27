@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#07111f">
   <meta name="description" content="MB.Óptica DNP — medição de distância naso-pupilar com calibração física e geração de O.S.">
   <title>MB.Óptica DNP</title>
-  <link rel="stylesheet" href="./style.css?v=20260926-03">
+  <link rel="stylesheet" href="./style.css?v=20260926-04">
 </head>
 <body>
 <main class="app">
@@ -56,10 +56,13 @@
         <div class="guide-subtitle">olhe para a câmera e mantenha a cabeça reta</div>
       </div>
       <div class="calibration-overlay hidden" id="calibrationOverlay">
-        <div class="calibration-line"></div>
-        <button class="cal-handle" id="handleA" type="button" aria-label="Ponto A"></button>
-        <button class="cal-handle" id="handleB" type="button" aria-label="Ponto B"></button>
-        <span class="cal-label" id="calLabel">Alinhe os pontos às extremidades da referência</span>
+        <div class="cal-rect"></div>
+        <div class="cal-centerline"></div>
+        <button class="cal-handle" id="handleTL" type="button" aria-label="Canto superior esquerdo"></button>
+        <button class="cal-handle" id="handleTR" type="button" aria-label="Canto superior direito"></button>
+        <button class="cal-handle" id="handleBR" type="button" aria-label="Canto inferior direito"></button>
+        <button class="cal-handle" id="handleBL" type="button" aria-label="Canto inferior esquerdo"></button>
+        <span class="cal-label" id="calLabel">Alinhe os 4 pontos aos cantos da referência física</span>
       </div>
     </section>
 
@@ -87,30 +90,34 @@
         <span class="pill amber" id="calibrationState">Não calibrado</span>
       </div>
 
-      <p class="helper">Use uma referência com dimensão conhecida, mantida no mesmo plano aproximado dos olhos. Um cartão padrão ID-1 mede <b>85,60 mm</b> de largura.</p>
+      <p class="helper">Use um retângulo físico conhecido no mesmo plano dos olhos. O padrão sugerido é <b>85,60 × 53,98 mm</b> (ID-1). Os 4 cantos corrigem escala e perspectiva.</p>
 
       <div class="field-row">
         <label>
-          <span>Largura real da referência</span>
+          <span>Largura da referência</span>
           <div class="input-suffix"><input id="referenceMm" type="number" min="10" max="300" step="0.1" value="85.6"><em>mm</em></div>
         </label>
-        <div class="calibration-readout">
-          <span>Escala</span>
-          <strong id="scaleValue">—</strong>
-        </div>
+        <label>
+          <span>Altura da referência</span>
+          <div class="input-suffix"><input id="referenceHeightMm" type="number" min="10" max="300" step="0.1" value="53.98"><em>mm</em></div>
+        </label>
+      </div>
+      <div class="calibration-readout wide">
+        <span>Plano métrico</span>
+        <strong id="scaleValue">Aguardando 4 pontos</strong>
       </div>
 
       <ol class="compact-list">
         <li>Coloque a referência horizontalmente, próxima ao plano dos olhos.</li>
-        <li>Arraste os dois marcadores azuis até as extremidades da referência.</li>
-        <li>Confirme a calibração e mantenha a mesma posição da câmera.</li>
+        <li>Arraste os 4 marcadores azuis para os quatro cantos do retângulo.</li>
+        <li>O sistema corrige perspectiva e transforma a imagem para milímetros.</li>
       </ol>
 
       <div class="button-row">
         <button class="secondary" id="repositionBtn" type="button">Reiniciar pontos</button>
         <button class="primary small" id="confirmCalibrationBtn" type="button">Confirmar calibração</button>
       </div>
-      <div class="validation" id="calibrationValidation">Aguardando referência física.</div>
+      <div class="validation" id="calibrationValidation">Aguardando os quatro cantos da referência.</div>
     </section>
 
     <section class="card panel hidden" id="measurementPanel">
@@ -137,6 +144,10 @@
       <div class="reading-meta">
         <span id="readingCount">0/24 frames</span>
         <span id="readingNote">Aguardando rosto</span>
+      </div>
+      <div class="nasal-reference">
+        <div><span>PONTO 0</span><strong>ponte da armação</strong></div>
+        <span id="nasalReferenceValue">0,0 mm • confirme na ponte</span>
       </div>
 
       <div class="button-row">
@@ -210,6 +221,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-<script src="./app.js?v=20260926-03"></script>
+<script src="./app.js?v=20260926-04"></script>
 </body>
 </html>
