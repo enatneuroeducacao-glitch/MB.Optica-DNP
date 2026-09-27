@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#07111f">
   <meta name="description" content="MB.Óptica DNP — medição de distância naso-pupilar com calibração física e geração de O.S.">
   <title>MB.Óptica DNP</title>
-  <link rel="stylesheet" href="./style.css?v=20260926-16">
+  <link rel="stylesheet" href="./style.css?v=20260927-17">
 </head>
 <body>
 <main class="app">
@@ -30,13 +30,13 @@
 
   <section class="card intro" id="intro">
     <div class="eyebrow">LEITOR DNP</div>
-    <h1>Medição assistida de DNP</h1>
-    <p>O MB.Óptica DNP usa a câmera para localizar as íris, estabilizar a leitura e converter pixels em milímetros a partir de uma referência física conhecida.</p>
+    <h1>Medição biométrica de DNP</h1>
+    <p>O MB.Óptica DNP combina biometria facial, localização das pupilas e uma referência física conhecida para transformar a captura da câmera em milímetros. O fluxo foi redesenhado para trabalhar com um cartão padrão como referência métrica.</p>
 
     <div class="feature-grid">
       <div><strong>OD + OE</strong><span>DNP monocular e binocular</span></div>
       <div><strong>Adulto + infantil</strong><span>Sem corte artificial de 25 mm</span></div>
-      <div><strong>Calibração</strong><span>Referência física por atendimento</span></div>
+      <div><strong>Biometria + escala</strong><span>Rosto mapeado + cartão de referência</span></div>
     </div>
 
     <div class="notice">
@@ -64,7 +64,7 @@
         <button class="cal-handle" id="handleTR" type="button" aria-label="Canto superior direito"></button>
         <button class="cal-handle" id="handleBR" type="button" aria-label="Canto inferior direito"></button>
         <button class="cal-handle" id="handleBL" type="button" aria-label="Canto inferior esquerdo"></button>
-        <span class="cal-label" id="calLabel">Alinhe os 4 pontos aos cantos da referência física</span>
+        <span class="cal-label" id="calLabel">Alinhe os 4 pontos aos cantos do cartão</span>
       </div>
     </section>
 
@@ -87,12 +87,12 @@
       <div class="section-title-row">
         <div>
           <div class="eyebrow">ETAPA 2</div>
-          <h2>Calibração física</h2>
+          <h2>Referência física</h2>
         </div>
         <span class="pill amber" id="calibrationState">Não calibrado</span>
       </div>
 
-      <p class="helper">Calibre usando uma referência física conhecida no mesmo plano dos olhos. Os 4 pontos corrigem escala e perspectiva. Depois, o campo muda para dois quadros, como uma armação: <b>OD</b> e <b>OE</b>, com régua individual entre a ponte e cada pupila.</p>
+      <p class="helper">Use um cartão padrão ID-1 (cartão bancário/CRLV no formato padrão) próximo ao rosto, visível na câmera. A largura e a altura conhecidas do cartão fornecem a escala física; os 4 pontos corrigem a perspectiva. Depois, a biometria facial localiza as pupilas e o ponto 0 da ponte.</p>
 
       <div class="field-row">
         <label>
@@ -227,6 +227,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-<script src="./app.js?v=20260926-16"></script>
+<script src="./app.js?v=20260927-17"></script>
 </body>
 </html>
