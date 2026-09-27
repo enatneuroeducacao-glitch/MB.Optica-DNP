@@ -1,89 +1,156 @@
+import {FilesetResolver,FaceLandmarker} from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/+esm";
+
 const $=id=>document.getElementById(id);
-const video=$("video"),canvas=$("overlay"),ctx=canvas.getContext("2d");
-const roiCanvas=document.createElement("canvas"),roiCtx=roiCanvas.getContext("2d");
-const viewer=$("viewer"),workspace=$("workspace"),intro=$("intro"),startBtn=$("startBtn");
-const statusDot=$("statusDot"),cameraStatus=$("cameraStatus"),cameraQuality=$("cameraQuality"),captureBadge=$("captureBadge");
-const frontBtn=$("frontBtn"),rearBtn=$("rearBtn");
-const referencePanel=$("referencePanel"),measurementPanel=$("measurementPanel"),osPanel=$("osPanel"),savedPanel=$("savedPanel");
-const referenceState=$("referenceState"),referencePx=$("referencePx"),referenceValidation=$("referenceValidation"),confirmReferenceBtn=$("confirmReferenceBtn");
-const refLeft=$("refLeft"),refRight=$("refRight"),nasalHandle=$("nasalHandle");
-const measurementState=$("measurementState"),faceState=$("faceState"),poseState=$("poseState"),stabilityState=$("stabilityState"),scaleState=$("scaleState");
-const confirmNasalBtn=$("confirmNasalBtn");
-const odEl=$("od"),oeEl=$("oe"),dnpEl=$("dnp"),readingCount=$("readingCount"),readingNote=$("readingNote");
-const nasalReferenceValue=$("nasalReferenceValue"),useReadingBtn=$("useReadingBtn");
-const savedTitle=$("savedTitle"),savedSummary=$("savedSummary");
-const customerName=$("customerName"),customerPhone=$("customerPhone"),customerCpf=$("customerCpf"),saleNumber=$("saleNumber"),customerType=$("customerType"),customerNotes=$("customerNotes");
-const osNumber=$("osNumber"),osDnp=$("osDnp"),osMono=$("osMono"),osValidation=$("osValidation");
-let stream=null,running=false,animationFrame=null,cameraFacing="user";
-let faceMesh=null,selectedReading=null,samples=[],referenceConfirmed=false,nasalConfirmed=false;
-let refPoints={left:{x:0,y:0},right:{x:0,y:0}},nasalPoint={x:0,y:0};
-let dragTarget=null,currentGeometry=null,currentScale=null,currentOs=null;
-const STABLE_FRAMES=24,REF_WIDTH_MM=85.6,ROI_ZOOM=1.55;
-const RIGHT_IRIS=468,LEFT_IRIS=473;
-const RIGHT_IRIS_RING=[469,470,471,472],LEFT_IRIS_RING=[474,475,476,477];
-const RIGHT_EYE_INNER=133,RIGHT_EYE_OUTER=33,LEFT_EYE_INNER=362,LEFT_EYE_OUTER=263;
-const NOSE_BRIDGE=168,NOSE_TIP=1,NOSE_LEFT=98,NOSE_RIGHT=327;
-const FACE_LEFT=234,FACE_RIGHT=454,FACE_TOP=10,FACE_BOTTOM=152;
-const STORE_KEY="mb_dnp_biometric_os_v19";
+const video=$("video"),canvas=$("overlay"),ctx=canvas.getContext("2d"),viewer=$("viewer");
+const startBtn=$("startBtn"),intro=$("intro"),workspace=$("workspace"),statusDot=$("statusDot");
+const cameraStatus=$("cameraStatus"),cameraQuality=$("cameraQuality"),captureBadge=$("captureBadge");
+const frontBtn=$("frontBtn"),rearBtn=$("rearBtn"),faceState=$("faceState"),faceMetric=$("faceMetric");
+const poseMetric=$("poseMetric"),scaleMetric=$("scaleMetric"),stabilityMetric=$("stabilityMetric");
+const rightMetric=$("rightMetric"),leftMetric=$("leftMetric"),noseMetric=$("noseMetric"),biometricNote=$("biometricNote");
+const measurementState=$("measurementState"),odEl=$("od"),oeEl=$("oe"),dnpEl=$("dnp"),readingCount=$("readingCount"),readingNote=$("readingNote"),zeroMetric=$("zeroMetric"),useReadingBtn=$("useReadingBtn");
+const osPanel=$("osPanel"),customerName=$("customerName"),customerPhone=$("customerPhone"),customerCpf=$("customerCpf"),saleNumber=$("saleNumber"),customerType=$("customerType"),customerNotes=$("customerNotes"),osNumber=$("osNumber"),osDnp=$("osDnp"),osMono=$("osMono"),osValidation=$("osValidation");
+const savedPanel=$("savedPanel"),savedTitle=$("savedTitle"),savedSummary=$("savedSummary");
+let stream=null,running=false,faceLandmarker=null,lastVideoTime=-1,animationFrame=0,currentReading=null,samples=[];
+let cameraFacing="user",currentGeometry=null,currentScale=null,currentOs=null;
+const STABLE_FRAMES=24;
+const RIGHT_IRIS=468,LEFT_IRIS=473,NASAL=168,RIGHT_OUTER=33,LEFT_OUTER=263,FACE_LEFT=234,FACE_RIGHT=454,FACE_TOP=10,FACE_BOTTOM=152;
+const CANONICAL_EYE_OUTER_CM=8.891718;
+const STORE_KEY="mb_dnp_facial_biometric_v20";
 
-function mean(a){return a.length?a.reduce((x,y)=>x+y,0)/a.length:0}
-function median(a){if(!a.length)return 0;const s=[...a].sort((x,y)=>x-y),m=Math.floor(s.length/2);return s.length%2?s[m]:(s[m-1]+s[m])/2}
-function std(a){if(a.length<2)return 0;const m=mean(a);return Math.sqrt(mean(a.map(x=>(x-m)**2)))}
+function getView(){const r=viewer.getBoundingClientRect();return{w:r.width,h:r.height}}
+function resize(){const s=getView(),d=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(s.w*d);canvas.height=Math.round(s.h*d);canvas.style.width=s.w+"px";canvas.style.height=s.h+"px";ctx.setTransform(d,0,0,d,0,0)}
+function vp(p){const s=getView();return{x:(1-p.x)*s.w,y:p.y*s.h}}
+function rawPoint(p){return{x:p.x,y:p.y}}
 function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
-function point(lm,id){const p=lm[id];return p?{x:p.x,y:p.y}:null}
-function getView(){const r=viewer.getBoundingClientRect();return{w:Math.max(1,r.width),h:Math.max(1,r.height)}}
-function viewPoint(p){const s=getView();return{x:p.x*s.w,y:p.y*s.h}}
-function setStep(n){document.querySelectorAll(".step").forEach(e=>{const s=+e.dataset.step;e.classList.toggle("active",s===n);e.classList.toggle("done",s<n)})}
-function resizeCanvas(){const s=getView();const d=Math.min(window.devicePixelRatio||1,2);canvas.width=Math.round(s.w*d);canvas.height=Math.round(s.h*d);canvas.style.width=s.w+"px";canvas.style.height=s.h+"px";ctx.setTransform(d,0,0,d,0,0)}
-function sourceRoi(){const sw=video.videoWidth||1280,sh=video.videoHeight||720,s=getView(),aspect=s.w/s.h;let w=sw/ROI_ZOOM,h=w/aspect;if(h>sh){h=sh;w=h*aspect}return{x:(sw-w)/2,y:(sh-h)*.50,width:w,height:h}}
-function drawRoi(){if(video.readyState<2)return false;const s=getView(),r=sourceRoi();const w=Math.round(s.w),h=Math.round(s.h);if(roiCanvas.width!==w||roiCanvas.height!==h){roiCanvas.width=w;roiCanvas.height=h}roiCtx.drawImage(video,r.x,r.y,r.width,r.height,0,0,w,h);return true}
-function drawCameraLayer(){if(video.readyState<2)return false;const s=getView(),r=sourceRoi();ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,canvas.width,canvas.height);const d=Math.min(window.devicePixelRatio||1,2);ctx.setTransform(d,0,0,d,0,0);ctx.drawImage(video,r.x,r.y,r.width,r.height,0,0,s.w,s.h);ctx.restore();return true}
+function median(a){if(!a.length)return 0;const s=[...a].sort((x,y)=>x-y),m=Math.floor(s.length/2);return s.length%2?s[m]:(s[m-1]+s[m])/2}
+function std(a){if(a.length<2)return 0;const m=a.reduce((x,y)=>x+y,0)/a.length;return Math.sqrt(a.reduce((x,y)=>x+(y-m)**2,0)/a.length)}
+function setStep(n){document.querySelectorAll(".step").forEach((e,i)=>{e.classList.toggle("active",i===n-1);e.classList.toggle("done",i<n-1)})}
 
-function renderHandle(el,p){if(!p||!Number.isFinite(p.x))return;const s=getView();el.style.left=(s.w-p.x-14)+"px";el.style.top=(p.y-14)+"px";el.classList.remove("hidden")}
-function hideHandle(el){el.classList.add("hidden")}
-function initReference(){const s=getView();refPoints.left={x:s.w*.18,y:s.h*.72};refPoints.right={x:s.w*.82,y:s.h*.72};renderHandle(refLeft,refPoints.left);renderHandle(refRight,refPoints.right);referenceConfirmed=false;referenceState.textContent="Aguardando";referenceState.className="pill amber";referenceValidation.textContent="Aguardando as duas extremidades da referência.";referenceValidation.className="validation";confirmReferenceBtn.disabled=false}
-function pointerPos(e){const r=viewer.getBoundingClientRect(),s=getView();const visualX=Math.max(8,Math.min(r.width-8,e.clientX-r.left));return{x:s.w-visualX,y:Math.max(8,Math.min(r.height-8,e.clientY-r.top))}}
-function beginDrag(target,e){e.preventDefault();dragTarget=target}
-refLeft.addEventListener("pointerdown",e=>beginDrag("left",e));refRight.addEventListener("pointerdown",e=>beginDrag("right",e));nasalHandle.addEventListener("pointerdown",e=>beginDrag("nasal",e));
-window.addEventListener("pointermove",e=>{if(!dragTarget)return;const p=pointerPos(e);if(dragTarget==="left")refPoints.left=p;if(dragTarget==="right")refPoints.right=p;if(dragTarget==="nasal")nasalPoint=p;renderHandle(dragTarget==="left"?refLeft:dragTarget==="right"?refRight:nasalHandle,p);});
-window.addEventListener("pointerup",()=>dragTarget=null);
-$("resetReferenceBtn").addEventListener("click",initReference);
-$("repositionNasalBtn").addEventListener("click",()=>{if(currentGeometry){nasalPoint={...currentGeometry.nasal};renderHandle(nasalHandle,nasalPoint)}nasalConfirmed=false;confirmNasalBtn.disabled=!currentGeometry;samples=[];selectedReading=null;useReadingBtn.disabled=true;nasalReferenceValue.textContent="Arraste o zero até o apoio da ponte";setStep(2)});
-confirmNasalBtn.addEventListener("click",()=>{if(!currentGeometry)return;nasalConfirmed=true;confirmNasalBtn.disabled=true;nasalReferenceValue.textContent="Ponto 0 fixado • nova sequência de 24 quadros";samples=[];selectedReading=null;useReadingBtn.disabled=true;measurementState.textContent="Capturando";measurementState.className="pill";setStep(3)});
-window.addEventListener("resize",()=>{if(!workspace.classList.contains("hidden")){resizeCanvas();if(!referenceConfirmed)initReference()}});
+function matrixScale(matrix){
+ if(!matrix||matrix.length<16)return null;
+ const sx=Math.hypot(matrix[0],matrix[1],matrix[2]);
+ const sy=Math.hypot(matrix[4],matrix[5],matrix[6]);
+ const sz=Math.hypot(matrix[8],matrix[9],matrix[10]);
+ const s=(sx+sy+sz)/3;
+ return Number.isFinite(s)&&s>0?s:null;
+}
 
-function drawText(text,x,y,opt={}){ctx.save();ctx.translate(getView().w,0);ctx.scale(-1,1);ctx.font=opt.font||"700 10px Arial";ctx.fillStyle=opt.fill||"#fff";ctx.textAlign=opt.align||"center";ctx.fillText(text,x,y);ctx.restore()}
-function line(a,b,color="rgba(255,255,255,.7)",width=1){ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.strokeStyle=color;ctx.lineWidth=width;ctx.stroke()}
-function circle(p,r=4,fill="#55d6ff",stroke="#fff"){ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fillStyle=fill;ctx.fill();if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=1.5;ctx.stroke()}}
-function drawFaceGeometry(g){if(!g)return;circle(g.right,3.5,"#55d6ff","#fff");circle(g.left,3.5,"#55d6ff","#fff");circle(g.nasal,4,"#ffcc66","#fff");line(g.right,g.left,"rgba(85,214,255,.45)",1);line(g.nasal,{x:g.nasal.x,y:g.nasal.y-18},"rgba(255,204,102,.65)",1);line(g.nasal,{x:g.nasal.x,y:g.nasal.y+18},"rgba(255,204,102,.65)",1);drawText("OD",g.right.x,g.right.y-12,{font:"800 9px Arial",fill:"#9fe5ff"});drawText("OE",g.left.x,g.left.y-12,{font:"800 9px Arial",fill:"#9fe5ff"})}
-function drawReference(){if(!refPoints.left.x)return;line(refPoints.left,refPoints.right,"rgba(85,214,255,.85)",2);circle(refPoints.left,6,"#0b192b","#55d6ff");circle(refPoints.right,6,"#0b192b","#55d6ff");const px=dist(refPoints.left,refPoints.right);drawText("85,60 mm",getView().w/2,Math.min(getView().h-18,refPoints.left.y+24),{font:"800 10px Arial",fill:"#d8f2ff"})}
-function drawRuler(g,scale){if(!g||!scale)return;const s=getView(),zero=nasalPoint,y=g.nasal.y+48;line({x:Math.max(8,zero.x-220),y},{x:Math.min(s.w-8,zero.x+220),y},"rgba(85,214,255,.72)",1);for(let mm=-30;mm<=30;mm+=5){const x=zero.x+mm/scale;const major=mm%10===0;line({x,y:y-(major?13:8)},{x,y:y+3},major?"#fff":"rgba(219,238,255,.65)",major?1.5:1);if(major)drawText((mm===0?"0":Math.abs(mm)+" mm"),x,y+16,{font:"700 7px Arial",fill:mm===0?"#ffdf8a":"rgba(219,238,255,.8)"})}}
-function qualityFromGeometry(g){const eyeDist=dist(g.right,g.left),faceW=Math.max(1,dist(g.faceLeft,g.faceRight)),noseCenter=(g.noseLeft.x+g.noseRight.x)/2;const yaw=Math.abs((g.noseCenter.x-(g.right.x+g.left.x)/2)/eyeDist);const roll=Math.abs(g.roll);return{eyeDist,faceW,yaw,roll,good:roll<=5.5&&yaw<=.16}}
+function geometryFromResult(result){
+ const lm=result.faceLandmarks?.[0],matrix=result.facialTransformationMatrixes?.[0]?.data;
+ if(!lm)return null;
+ const r=vp(lm[RIGHT_IRIS]),l=vp(lm[LEFT_IRIS]),ro=vp(lm[RIGHT_OUTER]),lo=vp(lm[LEFT_OUTER]),n=vp(lm[NASAL]);
+ const fl=vp(lm[FACE_LEFT]),fr=vp(lm[FACE_RIGHT]),ft=vp(lm[FACE_TOP]),fb=vp(lm[FACE_BOTTOM]);
+ if([r,l,ro,lo,n,fl,fr,ft,fb].some(p=>!p))return null;
+ const axis={x:l.x-r.x,y:l.y-r.y},axisLen=Math.hypot(axis.x,axis.y)||1,u={x:axis.x/axisLen,y:axis.y/axisLen};
+ const roll=Math.atan2(axis.y,axis.x)*180/Math.PI;
+ const mid={x:(r.x+l.x)/2,y:(r.y+l.y)/2};
+ const faceWidth=dist(fl,fr),faceHeight=dist(ft,fb),eyeOuterPx=dist(ro,lo);
+ const scale=matrixScale(matrix);
+ if(!scale||eyeOuterPx<20)return null;
+ const eyeOuterCm=CANONICAL_EYE_OUTER_CM*scale;
+ const mmPerPx=(eyeOuterCm*10)/eyeOuterPx;
+ const project=p=>(p.x-mid.x)*u.x+(p.y-mid.y)*u.y;
+ const pr=project(r),pl=project(l),pn=project(n);
+ const od=Math.abs(pn-pr)*mmPerPx,oe=Math.abs(pl-pn)*mmPerPx,dp=Math.abs(pl-pr)*mmPerPx;
+ const yaw=Math.abs((n.x-mid.x)/Math.max(1,eyeOuterPx));
+ return {r,l,n,ro,lo,fl,fr,ft,fb,roll,yaw,faceWidth,faceHeight,eyeOuterPx,scale,eyeOuterCm,mmPerPx,od,oe,dp};
+}
 
-function extractGeometry(lm){const r=viewPoint(point(lm,RIGHT_IRIS)),l=viewPoint(point(lm,LEFT_IRIS));const ri=viewPoint(point(lm,RIGHT_EYE_INNER)),ro=viewPoint(point(lm,RIGHT_EYE_OUTER)),li=viewPoint(point(lm,LEFT_EYE_INNER)),lo=viewPoint(point(lm,LEFT_EYE_OUTER));const nb=viewPoint(point(lm,NOSE_BRIDGE)),nt=viewPoint(point(lm,NOSE_TIP)),nl=viewPoint(point(lm,NOSE_LEFT)),nr=viewPoint(point(lm,NOSE_RIGHT)),fl=viewPoint(point(lm,FACE_LEFT)),fr=viewPoint(point(lm,FACE_RIGHT)),ft=viewPoint(point(lm,FACE_TOP)),fb=viewPoint(point(lm,FACE_BOTTOM));if([r,l,ri,ro,li,lo,nb,nt,nl,nr,fl,fr,ft,fb].some(x=>!x))return null;const mid={x:(r.x+l.x)/2,y:(r.y+l.y)/2};const roll=Math.atan2(l.y-r.y,l.x-r.x)*180/Math.PI;const rot=(p)=>{const a=-roll*Math.PI/180,c=Math.cos(a),s=Math.sin(a);return{x:mid.x+(p.x-mid.x)*c-(p.y-mid.y)*s,y:mid.y+(p.x-mid.x)*s+(p.y-mid.y)*c}};const rr=rot(r),ll=rot(l),nn=rot(nb),nll=rot(nl),nrr=rot(nr),fffL=rot(fl),fffR=rot(fr);return{right:rr,left:ll,nasal:nn,noseLeft:nll,noseRight:nrr,noseCenter:(nll.x+nrr.x)/2,faceLeft:fffL,faceRight:fffR,faceTop:rot(ft),faceBottom:rot(fb),roll,raw:{eyeDistance:dist(rr,ll),faceWidth:dist(fffL,fffR),noseWidth:dist(nll,nrr),faceHeight:dist(rot(ft),rot(fb)),rightEyeWidth:dist(rot(ro),rot(ri)),leftEyeWidth:dist(rot(lo),rot(li))}}}
-function validateReference(){const px=dist(refPoints.left,refPoints.right);const s=getView();const horizontal=Math.abs(refPoints.right.y-refPoints.left.y);if(px<80){referenceValidation.textContent="Referência muito curta. Mostre a largura inteira do cartão.";referenceValidation.className="validation error";return false}if(horizontal>px*.12){referenceValidation.textContent="A referência precisa ficar praticamente horizontal.";referenceValidation.className="validation warn";return false}if(refPoints.left.x>refPoints.right.x)[refPoints.left,refPoints.right]=[refPoints.right,refPoints.left];referencePx.textContent=px.toFixed(1)+" px";referenceValidation.textContent="Escala pronta: "+(REF_WIDTH_MM/px).toFixed(4)+" mm/px no plano da captura.";referenceValidation.className="validation ok";return true}
-$("confirmReferenceBtn").addEventListener("click",()=>{if(!validateReference())return;referenceConfirmed=true;currentScale=REF_WIDTH_MM/dist(refPoints.left,refPoints.right);referenceState.textContent="Escala confirmada";referenceState.className="pill green";scaleState.textContent=currentScale.toFixed(4)+" mm/px";referencePanel.classList.add("hidden");measurementPanel.classList.remove("hidden");workspace.classList.add("measurement-mode");setStep(2);readingNote.textContent="Fixe o ponto 0 na ponte e aguarde 24 quadros.";if(currentGeometry){nasalPoint={...currentGeometry.nasal};renderHandle(nasalHandle,nasalPoint)}});
-$("newReadingBtn").addEventListener("click",()=>{samples=[];selectedReading=null;useReadingBtn.disabled=true;measurementState.textContent="Capturando";measurementState.className="pill";readingNote.textContent="Capturando nova sequência…";setStep(3)});
-function addSample(g){if(!referenceConfirmed||!nasalConfirmed||!currentScale||!g)return;const q=qualityFromGeometry(g);if(!q.good)return;const nasal=nasalPoint;const od=(nasal.x-g.right.x)*currentScale;const oe=(g.left.x-nasal.x)*currentScale;const dp=dist(g.right,g.left)*currentScale;if(od<=0||oe<=0||od>60||oe>60)return;samples.push({od,oe,dp,roll:q.roll,yaw:q.yaw});if(samples.length>STABLE_FRAMES)samples.shift();readingCount.textContent=samples.length+"/"+STABLE_FRAMES+" quadros";if(samples.length===STABLE_FRAMES){const odM=median(samples.map(x=>x.od)),oeM=median(samples.map(x=>x.oe)),dpM=median(samples.map(x=>x.dp));const spread=Math.max(std(samples.map(x=>x.od)),std(samples.map(x=>x.oe)));stableReading={od:odM,oe:oeM,dp:dpM,spread,frames:samples.length,scaleMmPerPx:currentScale,roll:median(samples.map(x=>x.roll)),yaw:median(samples.map(x=>x.yaw)),timestamp:new Date().toISOString()};selectedReading=stableReading;odEl.textContent=odM.toFixed(1)+" mm";oeEl.textContent=oeM.toFixed(1)+" mm";dnpEl.textContent=(odM+oeM).toFixed(1)+" mm";stabilityState.textContent=spread<.35?"Excelente":spread<.7?"Boa":"Revisar";stabilityState.className=spread<.7?"ok":"";measurementState.textContent="Leitura pronta";measurementState.className="pill green";readingNote.textContent="24 quadros estáveis • DNP calculada pela geometria facial";useReadingBtn.disabled=false;setStep(3)}}
-function renderResults(g){faceState.textContent="Detectado";faceState.className="ok";const q=qualityFromGeometry(g);poseState.textContent=q.good?"Frontal":"Ajustar";poseState.className=q.good?"ok":"warn";drawFaceGeometry(g);if(referenceConfirmed)drawRuler(g,currentScale);if(nasalConfirmed){renderHandle(nasalHandle,nasalPoint);drawText("0",nasalPoint.x,nasalPoint.y-18,{font:"900 11px Arial",fill:"#ffdf8a"});line(nasalPoint,g.right,"rgba(255,204,102,.65)",1);line(nasalPoint,g.left,"rgba(255,204,102,.65)",1)}else{nasalPoint={...g.nasal};renderHandle(nasalHandle,nasalPoint);confirmNasalBtn.disabled=false;nasalReferenceValue.textContent="Arraste o zero até o apoio da ponte e depois fixe-o"}if(referenceConfirmed&&nasalConfirmed)addSample(g)}
-function onResults(res){if(!running)return;if(!res.multiFaceLandmarks?.length){faceState.textContent="Não detectado";poseState.textContent="—";cameraQuality.textContent="Sem rosto";captureBadge.textContent="ROSTO NÃO DETECTADO";return}const g=extractGeometry(res.multiFaceLandmarks[0]);if(!g)return;currentGeometry=g;cameraQuality.textContent=qualityFromGeometry(g).good?"Boa captura":"Ajustar rosto";captureBadge.textContent=referenceConfirmed?"ANÁLISE BIOMÉTRICA":"REFERÊNCIA + ROSTO";renderResults(g)}
-async function processFrame(){if(!running)return;if(video.readyState>=2){if(drawRoi()){drawCameraLayer();try{await faceMesh.send({image:roiCanvas})}catch(e){console.error(e)}}}animationFrame=requestAnimationFrame(processFrame)}
-async function initCamera(facing=cameraFacing){if(stream)stream.getTracks().forEach(t=>t.stop());cameraFacing=facing;cameraStatus.textContent="Solicitando acesso à câmera…";try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:facing},width:{ideal:1280},height:{ideal:720}},audio:false});video.srcObject=stream;await video.play();await new Promise(r=>{if(video.readyState>=2)r();else video.onloadedmetadata=()=>r()});resizeCanvas();statusDot.classList.add("on");cameraStatus.textContent="Câmera ativa • mantenha o rosto frontal";cameraQuality.textContent="Ativa";running=true;cancelAnimationFrame(animationFrame);processFrame()}catch(e){cameraStatus.textContent="Não foi possível acessar a câmera: "+e.message;cameraQuality.textContent="Erro";statusDot.classList.remove("on")}}
-async function start(){intro.classList.add("hidden");workspace.classList.remove("hidden");setStep(1);resizeCanvas();initReference();await initCamera("user");}
+function drawLine(a,b,stroke="rgba(85,214,255,.65)",width=1){ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.strokeStyle=stroke;ctx.lineWidth=width;ctx.stroke()}
+function dot(p,r=3,fill="#55d6ff"){ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fillStyle=fill;ctx.fill()}
+function text(t,x,y,fill="#dff5ff",size=9){ctx.save();ctx.translate(getView().w,0);ctx.scale(-1,1);ctx.font="800 "+size+"px Arial";ctx.textAlign="center";ctx.fillStyle=fill;ctx.fillText(t,x,y);ctx.restore()}
+function drawBiometricMap(lm,g){
+ ctx.clearRect(0,0,getView().w,getView().h);
+ for(let i=0;i<lm.length;i+=4){const p=vp(lm[i]);dot(p,1.2,"rgba(102,211,255,.34)")}
+ const outline=[10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,234,93,132,58,172,136,150,149,176,148,10];
+ for(let i=0;i<outline.length-1;i++)drawLine(vp(lm[outline[i]]),vp(lm[outline[i+1]]),"rgba(122,222,255,.48)",1);
+ drawLine(g.r,g.l,"rgba(255,255,255,.55)",1.5);
+ drawLine(g.n,g.r,"rgba(255,204,102,.8)",1.5);
+ drawLine(g.n,g.l,"rgba(255,204,102,.8)",1.5);
+ dot(g.r,5,"#55d6ff");dot(g.l,5,"#55d6ff");dot(g.n,5,"#ffcc66");
+ text("OD",g.r.x,g.r.y-13,"#9fe5ff",9);text("OE",g.l.x,g.l.y-13,"#9fe5ff",9);text("0",g.n.x,g.n.y-14,"#ffdf8a",10);
+}
+
+function quality(g){
+ const roll=Math.abs(g.roll),yaw=g.yaw;
+ const good=roll<=5.5&&yaw<=.16;
+ return {good,roll,yaw};
+}
+
+function updateBiometric(g,lm){
+ const q=quality(g);
+ faceState.textContent="Mapeado";faceState.className="pill green";
+ faceMetric.textContent=Math.round(g.faceWidth)+" × "+Math.round(g.faceHeight)+" px";
+ poseMetric.textContent=q.good?"Frontal":"Ajustar";
+ poseMetric.className=q.good?"pill green":"pill amber";
+ scaleMetric.textContent=g.scale.toFixed(3)+"×";
+ rightMetric.textContent=g.r.x.toFixed(0)+", "+g.r.y.toFixed(0);
+ leftMetric.textContent=g.l.x.toFixed(0)+", "+g.l.y.toFixed(0);
+ noseMetric.textContent=g.n.x.toFixed(0)+", "+g.n.y.toFixed(0);
+ biometricNote.textContent=q.good?"Mapa facial estável • escala derivada do modelo 3D":"Centralize o rosto e mantenha a cabeça reta";
+ if(q.good){samples.push({od:g.od,oe:g.oe,dp:g.dp,scale:g.scale,roll:g.roll,yaw:g.yaw});if(samples.length>STABLE_FRAMES)samples.shift()}
+ readingCount.textContent=samples.length+"/"+STABLE_FRAMES+" quadros";
+ stabilityMetric.textContent=samples.length<STABLE_FRAMES?"Capturando":(Math.max(std(samples.map(x=>x.od)),std(samples.map(x=>x.oe))<.35)?"Excelente":"Boa");
+ if(samples.length===STABLE_FRAMES){
+   const od=median(samples.map(x=>x.od)),oe=median(samples.map(x=>x.oe)),dp=median(samples.map(x=>x.dp)),spread=Math.max(std(samples.map(x=>x.od)),std(samples.map(x=>x.oe)));
+   currentReading={od,oe,dp,spread,frames:STABLE_FRAMES,scale:median(samples.map(x=>x.scale)),roll:median(samples.map(x=>x.roll)),yaw:median(samples.map(x=>x.yaw)),method:"facial-landmarker+canonical-face-model"};
+   odEl.textContent=od.toFixed(1)+" mm";oeEl.textContent=oe.toFixed(1)+" mm";dnpEl.textContent=(od+oe).toFixed(1)+" mm";
+   zeroMetric.textContent="landmark 168 • automático";
+   measurementState.textContent="Leitura pronta";measurementState.className="pill green";
+   readingNote.textContent="24 quadros • modelo facial métrico";
+   useReadingBtn.disabled=false;
+ }
+}
+
+async function initLandmarker(){
+ if(faceLandmarker)return;
+ cameraStatus.textContent="Carregando modelo facial…";
+ const vision=await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm");
+ faceLandmarker=await FaceLandmarker.createFromOptions(vision,{baseOptions:{modelAssetPath:"https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",delegate:"GPU"},runningMode:"VIDEO",numFaces:1,outputFaceBlendshapes:false,outputFacialTransformationMatrixes:true,minFaceDetectionConfidence:.65,minFacePresenceConfidence:.65,minTrackingConfidence:.65});
+}
+
+async function initCamera(facing=cameraFacing){
+ if(stream)stream.getTracks().forEach(t=>t.stop());
+ cameraFacing=facing;
+ stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:facing},width:{ideal:1280},height:{ideal:720}},audio:false});
+ video.srcObject=stream;await video.play();resize();statusDot.classList.add("on");cameraStatus.textContent="Câmera ativa • centralize o rosto";cameraQuality.textContent="Ativa";running=true;lastVideoTime=-1;loop();
+}
+
+function loop(){
+ if(!running)return;
+ if(video.readyState>=2&&video.currentTime!==lastVideoTime&&faceLandmarker){
+   lastVideoTime=video.currentTime;
+   const result=faceLandmarker.detectForVideo(video,performance.now());
+   if(result.faceLandmarks?.length){
+     const g=geometryFromResult(result);
+     if(g){currentGeometry=g;drawBiometricMap(result.faceLandmarks[0],g);const q=quality(g);cameraQuality.textContent=q.good?"Boa captura":"Ajustar";captureBadge.textContent=q.good?"ROSTO MAPEADO":"AJUSTE DE POSE";updateBiometric(g,result.faceLandmarks[0]);}
+   }else{
+     ctx.clearRect(0,0,getView().w,getView().h);faceState.textContent="Não detectado";cameraQuality.textContent="Sem rosto";captureBadge.textContent="APROXIME O ROSTO";
+   }
+ }
+ animationFrame=requestAnimationFrame(loop);
+}
+
+async function start(){
+ try{intro.classList.add("hidden");workspace.classList.remove("hidden");setStep(1);resize();await initLandmarker();await initCamera("user");}
+ catch(e){cameraStatus.textContent="Erro ao iniciar biometria: "+e.message;console.error(e)}
+}
 startBtn.addEventListener("click",start);
 frontBtn.addEventListener("click",()=>{frontBtn.classList.add("active");rearBtn.classList.remove("active");initCamera("user")});
 rearBtn.addEventListener("click",()=>{rearBtn.classList.add("active");frontBtn.classList.remove("active");initCamera("environment")});
+window.addEventListener("resize",resize);
 
-function makeOsNumber(){return"MB-DNP-"+new Date().toISOString().slice(0,10).replace(/-/g,"")+"-"+Math.floor(1000+Math.random()*9000)}
-function saveRecord(final=false){if(!selectedReading)return;const os=currentOs||{schema:"MB.Optica.DNP.OS.v3",id:crypto.randomUUID?.()||String(Date.now()),number:makeOsNumber(),createdAt:new Date().toISOString(),measurement:{method:"biometria-facial+referencia-fisica",reference:"ID-1 85.60 mm",odMm:selectedReading.od,oeMm:selectedReading.oe,dnpMm:selectedReading.od+selectedReading.oe,dpMm:selectedReading.dp,nasalReference:"apoio-da-ponte",frames:selectedReading.frames,stability:selectedReading.spread,scaleMmPerPx:selectedReading.scaleMmPerPx,pose:{roll:selectedReading.roll,yaw:selectedReading.yaw}},customer:{}};os.number=os.number||makeOsNumber();os.customer={name:customerName.value.trim(),phone:customerPhone.value.trim(),cpf:customerCpf.value.trim(),saleNumber:saleNumber.value.trim(),type:customerType.value,notes:customerNotes.value.trim()};currentOs=os;const arr=JSON.parse(localStorage.getItem(STORE_KEY)||"[]");const i=arr.findIndex(x=>x.id===os.id);if(i>=0)arr[i]=os;else arr.push(os);localStorage.setItem(STORE_KEY,JSON.stringify(arr));updateLocalCount();return os}
-useReadingBtn.addEventListener("click",()=>{if(!selectedReading)return;osNumber.textContent=currentOs?.number||"Será gerada ao salvar";osDnp.textContent=(selectedReading.od+selectedReading.oe).toFixed(1)+" mm";osMono.textContent=selectedReading.od.toFixed(1)+" / "+selectedReading.oe.toFixed(1)+" mm";osPanel.classList.remove("hidden");setStep(4);osPanel.scrollIntoView({behavior:"smooth",block:"start"})});
-$("saveDraftBtn").addEventListener("click",()=>{if(!customerName.value.trim()){osValidation.textContent="Informe o nome do cliente.";osValidation.className="validation error";return}saveRecord(false);osValidation.textContent="Rascunho salvo neste dispositivo.";osValidation.className="validation ok";osValidation.classList.remove("hidden")});
-$("generateOsBtn").addEventListener("click",()=>{if(!customerName.value.trim()){osValidation.textContent="Informe o nome do cliente.";osValidation.className="validation error";osValidation.classList.remove("hidden");return}const os=saveRecord(true);savedTitle.textContent="O.S. "+os.number;savedSummary.textContent=customerName.value.trim()+" • DNP "+os.measurement.dnpMm.toFixed(1)+" mm • OD "+os.measurement.odMm.toFixed(1)+" mm • OE "+os.measurement.oeMm.toFixed(1)+" mm. Registro salvo localmente.";savedPanel.classList.remove("hidden");osPanel.classList.add("hidden");updateLocalCount();savedPanel.scrollIntoView({behavior:"smooth",block:"start"})});
-$("printBtn").addEventListener("click",()=>{if(!currentOs)return;const m=currentOs.measurement,c=currentOs.customer;const w=window.open("","_blank","width=800,height=700");w.document.write("<html><head><title>"+currentOs.number+"</title><style>body{font-family:Arial;padding:32px;color:#111}h1{margin-bottom:4px}.box{border:1px solid #bbb;padding:14px;margin:12px 0}.big{font-size:26px;font-weight:800}</style></head><body><h1>MB.Óptica — O.S.</h1><div>"+currentOs.number+"</div><div class=box><b>Cliente</b><br>"+(c.name||"—")+"<br>"+(c.phone||"")+" "+(c.cpf||"")+"</div><div class=box><b>Biometria DNP</b><p class=big>DNP "+m.dnpMm.toFixed(1)+" mm</p>OD "+m.odMm.toFixed(1)+" mm &nbsp; OE "+m.oeMm.toFixed(1)+" mm &nbsp; DP "+m.dpMm.toFixed(1)+" mm</div><div class=box>Referência: ID-1 85,60 mm • método: biometria facial + referência física<br>Estabilidade: "+m.stability.toFixed(2)+" mm • quadros: "+m.frames+"</div></body></html>");w.document.close();w.print()});
-function resetApp(){location.reload()}
-$("anotherBtn").addEventListener("click",resetApp);
-function updateLocalCount(){const arr=JSON.parse(localStorage.getItem(STORE_KEY)||"[]");$("localCount").textContent=arr.length;$("lastMeasurement").textContent=arr.length?new Date(arr[arr.length-1].createdAt).toLocaleString("pt-BR"):"Nenhuma"}
-$("settingsBtn").addEventListener("click",()=>{$("settingsPanel").classList.toggle("hidden");updateLocalCount()});
-$("closeSettingsBtn").addEventListener("click",()=>$("settingsPanel").classList.add("hidden"));
-$("clearLocalBtn").addEventListener("click",()=>{if(confirm("Apagar todos os atendimentos locais deste dispositivo?")){localStorage.removeItem(STORE_KEY);updateLocalCount()}});
-updateLocalCount();
+$("newReadingBtn").addEventListener("click",()=>{samples=[];currentReading=null;useReadingBtn.disabled=true;measurementState.textContent="Capturando";measurementState.className="pill";readingNote.textContent="Nova sequência facial iniciada";});
+useReadingBtn.addEventListener("click",()=>{if(!currentReading)return;osPanel.classList.remove("hidden");osDnp.textContent=(currentReading.od+currentReading.oe).toFixed(1)+" mm";osMono.textContent=currentReading.od.toFixed(1)+" / "+currentReading.oe.toFixed(1)+" mm";osNumber.textContent="Será gerada";osPanel.scrollIntoView({behavior:"smooth",block:"start"});setStep(4)});
+
+function osNum(){return"MB-DNP-"+new Date().toISOString().slice(0,10).replaceAll("-","")+"-"+Math.floor(1000+Math.random()*9000)}
+function saveOs(){
+ if(!currentReading)return null;
+ const os={schema:"MB.Optica.DNP.OS.v4",id:crypto.randomUUID?.()||String(Date.now()),number:osNum(),createdAt:new Date().toISOString(),customer:{name:customerName.value.trim(),phone:customerPhone.value.trim(),cpf:customerCpf.value.trim(),saleNumber:saleNumber.value.trim(),type:customerType.value,notes:customerNotes.value.trim()},measurement:{method:currentReading.method,odMm:currentReading.od,oeMm:currentReading.oe,dnpMm:currentReading.od+currentReading.oe,dpMm:currentReading.dp,referenceNasalLandmark:NASAL,frames:currentReading.frames,stabilityMm:currentReading.spread,modelScale:currentReading.scale,pose:{roll:currentReading.roll,yaw:currentReading.yaw}}};
+ const list=JSON.parse(localStorage.getItem(STORE_KEY)||"[]");list.push(os);localStorage.setItem(STORE_KEY,JSON.stringify(list));currentOs=os;return os;
+}
+$("saveDraftBtn").addEventListener("click",()=>{if(!customerName.value.trim()){osValidation.textContent="Informe o nome do cliente.";osValidation.className="validation error";osValidation.classList.remove("hidden");return}const os=saveOs();osValidation.textContent="Rascunho salvo neste dispositivo: "+os.number;osValidation.className="validation ok";osValidation.classList.remove("hidden")});
+$("generateOsBtn").addEventListener("click",()=>{if(!customerName.value.trim()){osValidation.textContent="Informe o nome do cliente.";osValidation.className="validation error";osValidation.classList.remove("hidden");return}const os=saveOs();savedTitle.textContent="O.S. "+os.number;savedSummary.textContent=customerName.value+" • DNP "+os.measurement.dnpMm.toFixed(1)+" mm • OD "+os.measurement.odMm.toFixed(1)+" mm • OE "+os.measurement.oeMm.toFixed(1)+" mm.";savedPanel.classList.remove("hidden");osPanel.classList.add("hidden");savedPanel.scrollIntoView({behavior:"smooth",block:"start"})});
+$("printBtn").addEventListener("click",()=>{if(!currentOs)return;const m=currentOs.measurement,c=currentOs.customer,w=window.open("","_blank","width=800,height=700");w.document.write("<html><head><title>"+currentOs.number+"</title><style>body{font-family:Arial;padding:32px;color:#111}.box{border:1px solid #aaa;padding:16px;margin:12px 0}.big{font-size:28px;font-weight:800}</style></head><body><h1>MB.Óptica — O.S.</h1>"+currentOs.number+"<div class=box><b>Cliente</b><br>"+c.name+"<br>"+c.phone+" "+c.cpf+"</div><div class=box><b>Biometria facial</b><div class=big>DNP "+m.dnpMm.toFixed(1)+" mm</div>OD "+m.odMm.toFixed(1)+" mm • OE "+m.oeMm.toFixed(1)+" mm • DP "+m.dpMm.toFixed(1)+" mm</div><div class=box>Método: Face Landmarker + modelo facial canônico • 24 quadros estáveis • referência nasal automática (landmark "+m.referenceNasalLandmark+")</div></body></html>");w.document.close();w.print()});
+$("anotherBtn").addEventListener("click",()=>location.reload());
+$("settingsBtn").addEventListener("click",()=>alert("MB DNP v20 • biometria facial • dados locais neste dispositivo"));
