@@ -131,3 +131,30 @@ button{cursor:pointer}
   .nasal-reference{padding:9px 10px}
   .nasal-reference strong{font-size:10px}
 }
+
+/* Campo óptico: enquadramento restrito à região dos óculos */
+.viewer{
+  aspect-ratio:16/7;
+  max-height:none;
+}
+.face-guide{
+  inset:14% 5%;
+  border:2px dashed rgba(85,214,255,.72);
+  border-radius:10px;
+  justify-content:flex-start;
+  padding:10px 12px;
+  align-items:flex-start;
+  background:linear-gradient(rgba(85,214,255,.035),rgba(85,214,255,.015));
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.05);
+}
+.guide-title{font-size:11px;color:rgba(255,255,255,.9)}
+.guide-subtitle{font-size:8px;color:rgba(255,255,255,.68);max-width:260px;text-align:left}
+@media(min-width:761px){
+  .viewer{aspect-ratio:16/7}
+}
+@media(max-width:760px){
+  .viewer{aspect-ratio:16/8;max-height:none}
+  .face-guide{inset:15% 4%;border-radius:9px;padding:8px 9px}
+  .guide-title{font-size:9px}
+  .guide-subtitle{font-size:7px}
+}
