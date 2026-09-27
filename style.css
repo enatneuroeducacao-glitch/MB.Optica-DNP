@@ -158,3 +158,45 @@ button{cursor:pointer}
   .guide-title{font-size:9px}
   .guide-subtitle{font-size:7px}
 }
+
+
+/* ===== MODO DE MEDIÇÃO: layout orientado à captura ===== */
+@media(min-width:761px){
+  .app{width:min(1500px,calc(100vw - 32px));padding:18px 18px 36px}
+  .workspace{grid-template-columns:minmax(700px,1.75fr) minmax(390px,.75fr);gap:16px}
+  .viewer{min-height:390px;aspect-ratio:16/7}
+  .camera-controls{grid-column:2;grid-row:1}
+  #calibrationPanel{grid-column:2;grid-row:2}
+  #measurementPanel{grid-column:1/-1;grid-row:3}
+  .measure strong{font-size:31px}
+  .quality-grid{gap:10px}
+}
+
+/* Depois da calibração, a medição ocupa a tela ao lado da imagem. */
+@media(min-width:761px){
+  .workspace.measurement-mode{grid-template-columns:minmax(760px,1.8fr) minmax(390px,.72fr);align-items:start}
+  .workspace.measurement-mode .viewer{grid-column:1;grid-row:1;min-height:0;aspect-ratio:16/7}
+  .workspace.measurement-mode #measurementPanel{grid-column:2;grid-row:1}
+  .workspace.measurement-mode .camera-controls,
+  .workspace.measurement-mode #calibrationPanel{display:none}
+  .workspace.measurement-mode #measurementPanel{position:sticky;top:14px}
+  .workspace.measurement-mode .measure-grid{grid-template-columns:1fr}
+  .workspace.measurement-mode .measure{padding:16px 12px}
+  .workspace.measurement-mode .measure strong{font-size:34px}
+  .workspace.measurement-mode .button-row{grid-template-columns:1fr}
+  .workspace.measurement-mode #osPanel,
+  .workspace.measurement-mode #savedPanel{grid-column:1/-1;grid-row:auto}
+}
+@media(max-width:760px){
+  .workspace.measurement-mode #calibrationPanel{display:none}
+  .workspace.measurement-mode #measurementPanel{display:block}
+}
+
+/* Mais contraste para o campo realmente útil da captura. */
+.viewer:after{
+  content:"REGIÃO DE MEDIÇÃO";
+  position:absolute;left:50%;bottom:8px;transform:translateX(-50%);
+  padding:4px 8px;border:1px solid rgba(85,214,255,.35);border-radius:999px;
+  background:rgba(4,12,22,.72);color:rgba(200,235,255,.82);
+  font-size:8px;font-weight:800;letter-spacing:.7px;pointer-events:none;
+}
