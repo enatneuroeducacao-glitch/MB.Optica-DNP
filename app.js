@@ -128,7 +128,7 @@ function setCalibration(){
   calibrationState.textContent="Plano métrico";calibrationState.className="pill green";
   calibrationValidation.textContent="Plano calibrado com 4 pontos e correção de perspectiva. Agora o ponto 0 será confirmado na ponte da armação.";
   calibrationValidation.className="validation ok";scaleValue.textContent=W.toFixed(1)+" × "+H.toFixed(2)+" mm • homografia OK";
-  measurementPanel.classList.remove("hidden");workspace.classList.add("measurement-mode");calibrationOverlay.classList.add("hidden");nasalHandle.classList.remove("hidden");nasalConfirmed=false;confirmNasalBtn.disabled=true;nasalReferenceValue.textContent="Posicione o marcador na ponte da armação";setStep(3);resetSamples();
+  measurementPanel.classList.remove("hidden");workspace.classList.add("measurement-mode");calibrationPanel.classList.add("hidden");cameraControls.classList.add("hidden");calibrationOverlay.classList.add("hidden");nasalHandle.classList.remove("hidden");nasalConfirmed=false;confirmNasalBtn.disabled=true;nasalReferenceValue.textContent="Posicione o marcador na ponte da armação";setStep(3);resetSamples();
   calibrationPanel.scrollIntoView({behavior:"smooth",block:"start"});
   setTimeout(()=>measurementPanel.scrollIntoView({behavior:"smooth",block:"start"}),450);
   return true
@@ -138,7 +138,7 @@ $("confirmCalibrationBtn").addEventListener("click",setCalibration);
 function invalidateCalibration(reason){
   calibration=null;calibrationState.textContent="Não calibrado";calibrationState.className="pill amber";
   calibrationValidation.textContent=reason||"Faça uma nova calibração.";calibrationValidation.className="validation warn";
-  scaleValue.textContent="—";measurementPanel.classList.add("hidden");workspace.classList.remove("measurement-mode");calibrationOverlay.classList.remove("hidden");
+  scaleValue.textContent="—";measurementPanel.classList.add("hidden");workspace.classList.remove("measurement-mode");calibrationPanel.classList.remove("hidden");cameraControls.classList.remove("hidden");calibrationOverlay.classList.remove("hidden");
   setStep(2);resetSamples();nasalConfirmed=false;nasalHandle.classList.add("hidden");confirmNasalBtn.disabled=true;resetCalibrationHandles()
 }
 
@@ -223,7 +223,7 @@ function resetSamples(){
   stabilityState.textContent="—";faceState.textContent="—";alignmentState.textContent="—";measurementState.textContent=calibration?"Aguardando":"Aguardando";measurementState.className="pill";useReadingBtn.disabled=true
 }
 async function start(){
-  intro.classList.add("hidden");workspace.classList.remove("hidden","measurement-mode");savedPanel.classList.add("hidden");settingsPanel.classList.add("hidden");
+  intro.classList.add("hidden");workspace.classList.remove("hidden","measurement-mode");calibrationPanel.classList.remove("hidden");cameraControls.classList.remove("hidden");savedPanel.classList.add("hidden");settingsPanel.classList.add("hidden");
   try{await openCamera();running=true;processFrame();calibrationOverlay.classList.remove("hidden");measurementPanel.classList.add("hidden");setStep(2);calibration=null;nasalPoint={x:0,y:0};nasalConfirmed=false;nasalHandle.classList.add("hidden");calibrationState.textContent="Não calibrado";calibrationState.className="pill amber";calibrationValidation.textContent="Faça a calibração física desta sessão antes de medir.";calibrationValidation.className="validation warn";scaleValue.textContent="—";resetCalibrationHandles()}
   catch(e){console.error(e);alert("Permita o acesso à câmera no navegador e tente novamente.");resetApp()}
 }
