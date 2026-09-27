@@ -1,3 +1,4 @@
+window.__MB_DNP_BOOT__=true;
 const $=id=>document.getElementById(id);
 const video=$("video"),canvas=$("overlay"),ctx=canvas.getContext("2d"),viewer=$("viewer");
 const startBtn=$("startBtn"),intro=$("intro"),workspace=$("workspace"),statusDot=$("statusDot");
@@ -14,7 +15,7 @@ const STABLE_FRAMES=24;
 const RIGHT_IRIS=468,LEFT_IRIS=473,NASAL=168,RIGHT_OUTER=33,LEFT_OUTER=263,FACE_LEFT=234,FACE_RIGHT=454,FACE_TOP=10,FACE_BOTTOM=152;
 const RIGHT_IRIS_EDGES=[469,470,471,472],LEFT_IRIS_EDGES=[474,475,476,477];
 const IRIS_DIAMETER_MM=11.7;
-const STORE_KEY="mb_dnp_facial_biometric_v23";
+const STORE_KEY="mb_dnp_facial_biometric_v24";
 
 function getView(){const r=viewer.getBoundingClientRect();return{w:r.width,h:r.height}}
 function resize(){const s=getView(),d=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(s.w*d);canvas.height=Math.round(s.h*d);canvas.style.width=s.w+"px";canvas.style.height=s.h+"px";ctx.setTransform(d,0,0,d,0,0)}
@@ -96,7 +97,7 @@ function updateBiometric(g,lm){
  biometricNote.textContent=q.good?"Mapa facial estável • escala métrica estimada pelo diâmetro da íris":"Centralize o rosto e mantenha a cabeça reta";
  if(q.good){samples.push({od:g.od,oe:g.oe,dp:g.dp,scale:g.scale,roll:g.roll,yaw:g.yaw});if(samples.length>STABLE_FRAMES)samples.shift()}
  readingCount.textContent=samples.length+"/"+STABLE_FRAMES+" quadros";
- stabilityMetric.textContent=samples.length<STABLE_FRAMES?"Capturando":(Math.max(std(samples.map(x=>x.od)),std(samples.map(x=>x.oe))<.35)?"Excelente":"Boa");
+ stabilityMetric.textContent=samples.length<STABLE_FRAMES?"Capturando":(Math.max(std(samples.map(x=>x.od)),std(samples.map(x=>x.oe)))<.35?"Excelente":"Boa");
  if(samples.length===STABLE_FRAMES){
    const od=median(samples.map(x=>x.od)),oe=median(samples.map(x=>x.oe)),dp=median(samples.map(x=>x.dp)),spread=Math.max(std(samples.map(x=>x.od)),std(samples.map(x=>x.oe)));
    currentReading={od,oe,dp,spread,frames:STABLE_FRAMES,scale:median(samples.map(x=>x.scale)),roll:median(samples.map(x=>x.roll)),yaw:median(samples.map(x=>x.yaw)),method:"facial-landmarker+iris-metric-scale"};
@@ -165,6 +166,6 @@ function saveOs(){
 }
 $("saveDraftBtn").addEventListener("click",()=>{if(!customerName.value.trim()){osValidation.textContent="Informe o nome do cliente.";osValidation.className="validation error";osValidation.classList.remove("hidden");return}const os=saveOs();osValidation.textContent="Rascunho salvo neste dispositivo: "+os.number;osValidation.className="validation ok";osValidation.classList.remove("hidden")});
 $("generateOsBtn").addEventListener("click",()=>{if(!customerName.value.trim()){osValidation.textContent="Informe o nome do cliente.";osValidation.className="validation error";osValidation.classList.remove("hidden");return}const os=saveOs();savedTitle.textContent="O.S. "+os.number;savedSummary.textContent=customerName.value+" • DNP "+os.measurement.dnpMm.toFixed(1)+" mm • OD "+os.measurement.odMm.toFixed(1)+" mm • OE "+os.measurement.oeMm.toFixed(1)+" mm.";savedPanel.classList.remove("hidden");osPanel.classList.add("hidden");savedPanel.scrollIntoView({behavior:"smooth",block:"start"})});
-$("printBtn").addEventListener("click",()=>{if(!currentOs)return;const m=currentOs.measurement,c=currentOs.customer,w=window.open("","_blank","width=800,height=700");w.document.write("<html><head><title>"+currentOs.number+"</title><style>body{font-family:Arial;padding:32px;color:#111}.box{border:1px solid #aaa;padding:16px;margin:12px 0}.big{font-size:28px;font-weight:800}</style></head><body><h1>MB.Óptica — O.S.</h1>"+currentOs.number+"<div class=box><b>Cliente</b><br>"+c.name+"<br>"+c.phone+" "+c.cpf+"</div><div class=box><b>Biometria facial</b><div class=big>DNP "+m.dnpMm.toFixed(1)+" mm</div>OD "+m.odMm.toFixed(1)+" mm • OE "+m.oeMm.toFixed(1)+" mm • DP "+m.dpMm.toFixed(1)+" mm</div><div class=box>Método: Face Landmarker + modelo facial canônico • 24 quadros estáveis • referência nasal automática (landmark "+m.referenceNasalLandmark+")</div></body></html>");w.document.close();w.print()});
+$("printBtn").addEventListener("click",()=>{if(!currentOs)return;const m=currentOs.measurement,c=currentOs.customer,w=window.open("","_blank","width=800,height=700");w.document.write("<html><head><title>"+currentOs.number+"</title><style>body{font-family:Arial;padding:32px;color:#111}.box{border:1px solid #aaa;padding:16px;margin:12px 0}.big{font-size:28px;font-weight:800}</style></head><body><h1>MB.Óptica — O.S.</h1>"+currentOs.number+"<div class=box><b>Cliente</b><br>"+c.name+"<br>"+c.phone+" "+c.cpf+"</div><div class=box><b>Biometria facial</b><div class=big>DNP "+m.dnpMm.toFixed(1)+" mm</div>OD "+m.odMm.toFixed(1)+" mm • OE "+m.oeMm.toFixed(1)+" mm • DP "+m.dpMm.toFixed(1)+" mm</div><div class=box>Método: Face Landmarker + escala biométrica pela íris • 24 quadros estáveis • referência nasal automática (landmark "+m.referenceNasalLandmark+")</div></body></html>");w.document.close();w.print()});
 $("anotherBtn").addEventListener("click",()=>location.reload());
-$("settingsBtn").addEventListener("click",()=>alert("MB DNP v20 • biometria facial • dados locais neste dispositivo"));
+$("settingsBtn").addEventListener("click",()=>alert("MB DNP v24 • biometria facial • dados locais neste dispositivo"));
