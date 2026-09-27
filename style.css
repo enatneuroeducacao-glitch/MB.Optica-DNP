@@ -37,3 +37,82 @@ button{cursor:pointer}
 @media(max-width:560px){.app{padding:13px 11px 26px}.card{padding:17px}.feature-grid{grid-template-columns:1fr}.button-row,.field-row,.form-grid{grid-template-columns:1fr}.form-grid label.full{grid-column:auto}.measure-grid{grid-template-columns:1fr 1fr}.measure.total{grid-column:1/-1}.quality-grid{grid-template-columns:1fr 1fr}.quality-grid>div:last-child{grid-column:1/-1}.os-preview{grid-template-columns:1fr 1fr}.os-preview>div:first-child{grid-column:1/-1}.step span{display:none}.step{padding:7px}.cal-label{font-size:9px;max-width:80%;white-space:normal;text-align:center}.face-guide{inset:10% 8% 12%}}
 @media(min-width:561px){.workspace{display:grid;grid-template-columns:1fr 1fr;align-items:start}.viewer{grid-column:1/-1;width:min(430px,100%);justify-self:center}.camera-controls,.panel,.settings-panel{width:100%}}
 @media print{body{background:#fff;color:#111}.topbar,.stepper,.intro,.viewer,.camera-controls,.calibration-panel,.measurement-panel,.settings-panel,.footer{display:none!important}.osPanel{display:block!important}.card{box-shadow:none;border:1px solid #bbb;background:#fff;color:#111}.helper,.eyebrow{color:#555}.form-grid input,.form-grid select,.form-grid textarea{color:#111;background:#fff;border:1px solid #bbb}.os-preview>div{background:#f5f5f5;border:1px solid #ccc}.os-preview span{color:#555}.os-preview strong{color:#111}}
+
+/* MB.Óptica DNP — responsive UX v2 */
+.app{width:min(1080px,100%);padding:22px 22px 40px}
+.brand{font-size:28px}.subtitle{font-size:12px}
+.stepper{max-width:900px;margin-left:auto;margin-right:auto}
+.workspace{gap:16px}
+.viewer{aspect-ratio:4/5}
+.panel,.camera-controls{min-width:0}
+@media(min-width:761px){
+  .workspace{display:grid;grid-template-columns:minmax(380px,470px) minmax(420px,1fr);align-items:start}
+  .viewer{grid-column:1;width:100%;justify-self:stretch;grid-row:1 / span 2}
+  .camera-controls{grid-column:2;grid-row:1}
+  #calibrationPanel{grid-column:2;grid-row:2}
+  #measurementPanel{grid-column:1/-1}
+  #osPanel{grid-column:1/-1}
+  #savedPanel{grid-column:1/-1;max-width:760px}
+  .measure strong{font-size:27px}
+  .form-grid{grid-template-columns:repeat(4,1fr)}
+  .form-grid label:nth-child(1){grid-column:span 4}
+  .form-grid label:nth-child(6){grid-column:span 4}
+}
+@media(max-width:760px){
+  .app{width:100%;padding:12px 10px 28px}
+  .topbar{margin-bottom:10px}.brand{font-size:23px}.subtitle{font-size:10px}
+  .icon-btn{width:36px;height:36px}
+  .stepper{gap:4px;margin-bottom:10px}
+  .step{font-size:9px;padding:6px 2px;gap:4px}
+  .step b{width:20px;height:20px;font-size:9px}
+  .card{border-radius:15px;padding:15px}
+  .workspace{display:flex;flex-direction:column;gap:10px}
+  .viewer{width:100%;aspect-ratio:4/5;border-radius:15px}
+  .camera-controls{padding:13px}
+  .panel{padding:15px}
+  .section-title-row h2{font-size:17px}
+  .helper{font-size:11px}
+  .field-row{grid-template-columns:1fr 1fr}
+  .compact-list{font-size:10px}
+  .measure-grid{grid-template-columns:repeat(3,1fr);gap:6px}
+  .measure{padding:12px 5px;border-radius:12px}
+  .measure span{font-size:9px}
+  .measure strong{font-size:20px;line-height:1.05}
+  .measure small{font-size:7px}
+  .quality-grid{grid-template-columns:repeat(3,1fr);gap:5px}
+  .quality-grid>div:last-child{grid-column:auto}
+  .quality-grid>div{padding:8px 5px;text-align:center}
+  .quality-grid span{font-size:8px}
+  .quality-grid strong{font-size:10px}
+  .reading-meta{font-size:8px}
+  .button-row{grid-template-columns:1fr 1fr;gap:7px}
+  .primary,.secondary{padding:12px 9px;font-size:12px}
+  .form-grid{grid-template-columns:1fr 1fr;gap:8px}
+  .form-grid label.full{grid-column:1/-1}
+  .form-grid input,.form-grid select,.form-grid textarea{padding:11px 10px;font-size:13px}
+  .os-preview{grid-template-columns:repeat(3,1fr);gap:5px}
+  .os-preview>div:first-child{grid-column:auto}
+  .os-preview>div{padding:8px 6px}
+  .os-preview strong{font-size:9px}
+  .os-preview span{font-size:7px}
+  .cal-label{font-size:9px}
+  .face-guide{inset:9% 7% 10%}
+}
+@media(max-width:420px){
+  .app{padding-left:8px;padding-right:8px}
+  .step span{font-size:8px}
+  .measure strong{font-size:18px}
+  .measure small{display:none}
+  .field-row{grid-template-columns:1fr}
+  .button-row{grid-template-columns:1fr 1fr}
+  .form-grid{grid-template-columns:1fr}
+  .form-grid label.full{grid-column:auto}
+  .os-preview{grid-template-columns:1fr 1fr}
+  .os-preview>div:last-child{grid-column:1/-1}
+}
+/* Progressive disclosure on phones: keep the active task readable. */
+@media(max-width:760px){
+  .workspace:has(#measurementPanel:not(.hidden)) #calibrationPanel{display:none}
+  .workspace:has(#osPanel:not(.hidden)) #calibrationPanel,
+  .workspace:has(#osPanel:not(.hidden)) #measurementPanel{display:none}
+}
