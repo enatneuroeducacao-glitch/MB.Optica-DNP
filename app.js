@@ -1,632 +1,256 @@
 const $ = id => document.getElementById(id);
 
-const video = $("video");
-const canvas = $("overlay");
-const ctx = canvas.getContext("2d");
+const video=$("video"), canvas=$("overlay"), ctx=canvas.getContext("2d");
+const startBtn=$("startBtn"), frontBtn=$("frontBtn"), rearBtn=$("rearBtn");
+const statusDot=$("statusDot"), workspace=$("workspace"), intro=$("intro"), viewer=$("viewer");
+const calibrationOverlay=$("calibrationOverlay"), calibrationPanel=$("calibrationPanel");
+const measurementPanel=$("measurementPanel"), osPanel=$("osPanel"), savedPanel=$("savedPanel"), settingsPanel=$("settingsPanel");
+const referenceMmEl=$("referenceMm"), referenceHeightMmEl=$("referenceHeightMm"), scaleValue=$("scaleValue");
+const calibrationState=$("calibrationState"), calibrationValidation=$("calibrationValidation");
+const measurementState=$("measurementState"), faceState=$("faceState"), stabilityState=$("stabilityState");
+const alignmentState=$("alignmentState"), readingCount=$("readingCount"), readingNote=$("readingNote");
+const odEl=$("od"), oeEl=$("oe"), dnpEl=$("dnp"), useReadingBtn=$("useReadingBtn");
+const nasalReferenceValue=$("nasalReferenceValue");
+const customerName=$("customerName"), customerPhone=$("customerPhone"), customerCpf=$("customerCpf");
+const saleNumber=$("saleNumber"), customerType=$("customerType"), customerNotes=$("customerNotes");
+const osNumber=$("osNumber"), osDnp=$("osDnp"), osMono=$("osMono"), osValidation=$("osValidation");
 
-const startBtn = $("startBtn");
-const frontBtn = $("frontBtn");
-const rearBtn = $("rearBtn");
-const statusDot = $("statusDot");
-const workspace = $("workspace");
-const intro = $("intro");
-const viewer = $("viewer");
-const calibrationOverlay = $("calibrationOverlay");
-const calibrationPanel = $("calibrationPanel");
-const measurementPanel = $("measurementPanel");
-const osPanel = $("osPanel");
-const savedPanel = $("savedPanel");
-const settingsPanel = $("settingsPanel");
+let stream=null,running=false,cameraFacing="user",animationFrame=null;
+let calibration=null,nasalPoint={x:0,y:0},dragHandle=null;
+let samples=[],stableReading=null,selectedReading=null;
+const STABLE_FRAMES=24;
+let currentOs=null,savedRecord=null;
 
-const handleA = $("handleA");
-const handleB = $("handleB");
-const calibrationLine = document.querySelector(".calibration-line");
-const referenceMmEl = $("referenceMm");
-const scaleValue = $("scaleValue");
-const calibrationState = $("calibrationState");
-const calibrationValidation = $("calibrationValidation");
+const handles={
+  tl:$("handleTL"),tr:$("handleTR"),br:$("handleBR"),bl:$("handleBL")
+};
+const RIGHT_IRIS_CENTER_ID=468, LEFT_IRIS_CENTER_ID=473;
+const RIGHT_IRIS_RING_IDS=[469,470,471,472], LEFT_IRIS_RING_IDS=[474,475,476,477];
+const RIGHT_EYE_CONTOUR=[33,7,163,144,145,153,154,155,133];
+const LEFT_EYE_CONTOUR=[362,382,381,380,374,373,390,249,263];
 
-const measurementState = $("measurementState");
-const faceState = $("faceState");
-const stabilityState = $("stabilityState");
-const alignmentState = $("alignmentState");
-const readingCount = $("readingCount");
-const readingNote = $("readingNote");
-const odEl = $("od");
-const oeEl = $("oe");
-const dnpEl = $("dnp");
-const useReadingBtn = $("useReadingBtn");
-
-const customerName = $("customerName");
-const customerPhone = $("customerPhone");
-const customerCpf = $("customerCpf");
-const saleNumber = $("saleNumber");
-const customerType = $("customerType");
-const customerNotes = $("customerNotes");
-const osNumber = $("osNumber");
-const osDnp = $("osDnp");
-const osMono = $("osMono");
-const osValidation = $("osValidation");
-
-let stream = null;
-let running = false;
-let cameraFacing = "user";
-let animationFrame = null;
-
-let calibration = null;
-let calibrationPoints = { a: {x:0,y:0}, b: {x:0,y:0} };
-let dragHandle = null;
-
-let samples = [];
-let stableReading = null;
-let selectedReading = null;
-const STABLE_FRAMES = 24;
-
-let currentOs = null;
-let savedRecord = null;
-
-const RIGHT_IRIS_CENTER_ID = 468;
-const LEFT_IRIS_CENTER_ID = 473;
-const RIGHT_IRIS_RING_IDS = [469,470,471,472];
-const LEFT_IRIS_RING_IDS = [474,475,476,477];
-const RIGHT_EYE_CONTOUR = [33,7,163,144,145,153,154,155,133];
-const LEFT_EYE_CONTOUR = [362,382,381,380,374,373,390,249,263];
-
-function point(lm,id){
-  const p=lm[id];
-  return p ? {x:p.x,y:p.y} : null;
-}
-function distance(a,b){ return Math.hypot(a.x-b.x,a.y-b.y); }
-function median(values){
-  if(!values.length)return 0;
-  const s=[...values].sort((a,b)=>a-b);
-  const m=Math.floor(s.length/2);
-  return s.length%2?s[m]:(s[m-1]+s[m])/2;
-}
-function mean(values){ return values.length ? values.reduce((a,b)=>a+b,0)/values.length : 0; }
-function std(values){
-  if(values.length<2)return 0;
-  const m=mean(values);
-  return Math.sqrt(mean(values.map(v=>(v-m)**2)));
-}
-function getViewSize(){
-  const r=viewer.getBoundingClientRect();
-  return {width:Math.max(1,r.width),height:Math.max(1,r.height)};
-}
+function point(lm,id){const p=lm[id];return p?{x:p.x,y:p.y}:null}
+function distance(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
+function median(v){if(!v.length)return 0;const s=[...v].sort((a,b)=>a-b),m=Math.floor(s.length/2);return s.length%2?s[m]:(s[m-1]+s[m])/2}
+function mean(v){return v.length?v.reduce((a,b)=>a+b,0)/v.length:0}
+function std(v){if(v.length<2)return 0;const m=mean(v);return Math.sqrt(mean(v.map(x=>(x-m)**2)))}
+function getViewSize(){const r=viewer.getBoundingClientRect();return{width:Math.max(1,r.width),height:Math.max(1,r.height)}}
 function toViewPoint(p){
-  const sourceW=video.videoWidth||1280;
-  const sourceH=video.videoHeight||720;
-  const size=getViewSize();
-  const scale=Math.max(size.width/sourceW,size.height/sourceH);
-  const renderedW=sourceW*scale;
-  const renderedH=sourceH*scale;
-  const cropX=(renderedW-size.width)/2;
-  const cropY=(renderedH-size.height)/2;
-  return {x:p.x*renderedW-cropX,y:p.y*renderedH-cropY};
+  const sw=video.videoWidth||1280,sh=video.videoHeight||720,s=getViewSize();
+  const scale=Math.max(s.width/sw,s.height/sh),rw=sw*scale,rh=sh*scale;
+  return{x:p.x*rw-(rw-s.width)/2,y:p.y*rh-(rh-s.height)/2}
 }
-function setStep(n){
-  document.querySelectorAll(".step").forEach(el=>{
-    const s=Number(el.dataset.step);
-    el.classList.toggle("active",s===n);
-    el.classList.toggle("done",s<n);
-  });
-}
+function setStep(n){document.querySelectorAll(".step").forEach(el=>{const s=Number(el.dataset.step);el.classList.toggle("active",s===n);el.classList.toggle("done",s<n)})}
+
 function resetCalibrationHandles(){
-  const size=getViewSize();
-  calibrationPoints.a={x:size.width*.22,y:size.height*.5};
-  calibrationPoints.b={x:size.width*.78,y:size.height*.5};
+  const s=getViewSize();
+  calibrationPoints={
+    tl:{x:s.width*.20,y:s.height*.28},tr:{x:s.width*.80,y:s.height*.28},
+    br:{x:s.width*.80,y:s.height*.72},bl:{x:s.width*.20,y:s.height*.72}
+  };
   renderCalibrationHandles();
 }
+let calibrationPoints={tl:{x:0,y:0},tr:{x:0,y:0},br:{x:0,y:0},bl:{x:0,y:0}};
 function renderCalibrationHandles(){
-  const a=calibrationPoints.a,b=calibrationPoints.b;
-  handleA.style.left=(a.x-14)+"px";
-  handleA.style.top=(a.y-14)+"px";
-  handleB.style.left=(b.x-14)+"px";
-  handleB.style.top=(b.y-14)+"px";
-  calibrationLine.style.left=Math.min(a.x,b.x)+"px";
-  calibrationLine.style.width=Math.abs(b.x-a.x)+"px";
-  calibrationLine.style.right="auto";
-  calibrationLine.style.top=((a.y+b.y)/2)+"px";
-  calibrationLine.style.transform="rotate("+Math.atan2(b.y-a.y,b.x-a.x)*180/Math.PI+"deg)";
-  calibrationLine.style.transformOrigin="left center";
-  const px=distance(a,b);
-  const mm=Number(referenceMmEl.value)||0;
-  scaleValue.textContent=mm>0&&px>0?(px.toFixed(0)+" px / "+mm.toFixed(1)+" mm"):"—";
+  Object.entries(handles).forEach(([k,h])=>{
+    const p=calibrationPoints[k];h.style.left=(p.x-14)+"px";h.style.top=(p.y-14)+"px";
+  });
+  const pts=["tl","tr","br","bl"].map(k=>calibrationPoints[k]);
+  const minX=Math.min(...pts.map(p=>p.x)),maxX=Math.max(...pts.map(p=>p.x));
+  const minY=Math.min(...pts.map(p=>p.y)),maxY=Math.max(...pts.map(p=>p.y));
+  const rect=document.querySelector(".cal-rect"),line=document.querySelector(".cal-centerline");
+  if(rect){rect.style.left=minX+"px";rect.style.top=minY+"px";rect.style.width=(maxX-minX)+"px";rect.style.height=(maxY-minY)+"px"}
+  if(line){line.style.left=((minX+maxX)/2)+"px";line.style.top=minY+"px";line.style.height=(maxY-minY)+"px"}
+  scaleValue.textContent="4 pontos • "+Number(referenceMmEl.value||0).toFixed(1)+" × "+Number(referenceHeightMmEl.value||0).toFixed(2)+" mm";
 }
 function pointerPosition(e){
   const r=viewer.getBoundingClientRect();
-  return {
-    x:Math.max(12,Math.min(r.width-12,e.clientX-r.left)),
-    y:Math.max(12,Math.min(r.height-12,e.clientY-r.top))
-  };
+  return{x:Math.max(10,Math.min(r.width-10,e.clientX-r.left)),y:Math.max(10,Math.min(r.height-10,e.clientY-r.top))}
 }
-function startDrag(handle,e){
-  e.preventDefault();
-  dragHandle=handle;
-  handle==="a" ? handleA.setPointerCapture?.(e.pointerId) : handleB.setPointerCapture?.(e.pointerId);
-}
-function moveDrag(e){
-  if(!dragHandle)return;
-  const p=pointerPosition(e);
-  calibrationPoints[dragHandle]=p;
-  renderCalibrationHandles();
-}
-function endDrag(){ dragHandle=null; }
-
-handleA.addEventListener("pointerdown",e=>startDrag("a",e));
-handleB.addEventListener("pointerdown",e=>startDrag("b",e));
-window.addEventListener("pointermove",moveDrag);
-window.addEventListener("pointerup",endDrag);
+function startDrag(name,e){e.preventDefault();dragHandle=name}
+function moveDrag(e){if(!dragHandle)return;calibrationPoints[dragHandle]=pointerPosition(e);renderCalibrationHandles()}
+function endDrag(){dragHandle=null}
+Object.entries(handles).forEach(([k,h])=>h.addEventListener("pointerdown",e=>startDrag(k,e)));
+window.addEventListener("pointermove",moveDrag);window.addEventListener("pointerup",endDrag);
 window.addEventListener("resize",()=>{if(!workspace.classList.contains("hidden"))renderCalibrationHandles()});
-referenceMmEl.addEventListener("input",renderCalibrationHandles);
+referenceMmEl.addEventListener("input",renderCalibrationHandles);referenceHeightMmEl.addEventListener("input",renderCalibrationHandles);
 
-$("repositionBtn").addEventListener("click",()=>{
-  resetCalibrationHandles();
-  calibrationValidation.textContent="Pontos reiniciados. Alinhe-os às extremidades da referência.";
-  calibrationValidation.className="validation";
-});
+$("repositionBtn").addEventListener("click",()=>{resetCalibrationHandles();calibrationValidation.textContent="Pontos reiniciados. Alinhe-os aos quatro cantos.";calibrationValidation.className="validation"});
 
-function setCalibrationFromHandles(){
-  const mm=Number(referenceMmEl.value);
-  const px=distance(calibrationPoints.a,calibrationPoints.b);
-
-  if(!Number.isFinite(mm)||mm<10||mm>300){
-    calibrationValidation.textContent="Informe uma dimensão física válida entre 10 e 300 mm.";
-    calibrationValidation.className="validation error";
-    return false;
+/* Homografia: transforma os 4 cantos capturados no plano métrico conhecido. */
+function solve8(A,b){
+  const n=8,M=A.map((r,i)=>[...r,b[i]]);
+  for(let c=0;c<n;c++){
+    let p=c;for(let r=c+1;r<n;r++)if(Math.abs(M[r][c])>Math.abs(M[p][c]))p=r;
+    if(Math.abs(M[p][c])<1e-10)return null;
+    [M[c],M[p]]=[M[p],M[c]];
+    const d=M[c][c];for(let j=c;j<=n;j++)M[c][j]/=d;
+    for(let r=0;r<n;r++){if(r===c)continue;const f=M[r][c];if(!f)continue;for(let j=c;j<=n;j++)M[r][j]-=f*M[c][j]}
   }
-  if(px<80){
-    calibrationValidation.textContent="A distância entre os pontos está pequena. Posicione os marcadores nas extremidades da referência.";
-    calibrationValidation.className="validation warn";
-    return false;
+  return M.map(r=>r[n])
+}
+function homographyFromCorners(src,W,H){
+  const dst=[[0,0],[W,0],[W,H],[0,H]],A=[],b=[];
+  for(let i=0;i<4;i++){
+    const x=src[i].x,y=src[i].y,u=dst[i][0],v=dst[i][1];
+    A.push([x,y,1,0,0,0,-u*x,-u*y]);b.push(u);
+    A.push([0,0,0,x,y,1,-v*x,-v*y]);b.push(v);
   }
-
-  const pxPerMm=px/mm;
-  calibration={
-    pxPerMm:pxPerMm,
-    referenceMm:mm,
-    timestamp:new Date().toISOString(),
-    cameraFacing:cameraFacing,
-    viewport:getViewSize()
-  };
-
+  const h=solve8(A,b);if(!h)return null;
+  return[h[0],h[1],h[2],h[3],h[4],h[5],h[6],h[7],1]
+}
+function applyH(H,p){
+  const d=H[6]*p.x+H[7]*p.y+H[8],x=(H[0]*p.x+H[1]*p.y+H[2])/d,y=(H[3]*p.x+H[4]*p.y+H[5])/d;
+  return{x,y}
+}
+function setCalibration(){
+  const W=Number(referenceMmEl.value),H=Number(referenceHeightMmEl.value);
+  if(!Number.isFinite(W)||W<10||W>300||!Number.isFinite(H)||H<10||H>300){
+    calibrationValidation.textContent="Informe largura e altura válidas entre 10 e 300 mm.";calibrationValidation.className="validation error";return false
+  }
+  const src=["tl","tr","br","bl"].map(k=>calibrationPoints[k]);
+  if(distance(src[0],src[1])<80||distance(src[3],src[2])<80||distance(src[0],src[3])<40){
+    calibrationValidation.textContent="Os 4 pontos precisam estar nos cantos da referência.";calibrationValidation.className="validation warn";return false
+  }
+  const Hm=homographyFromCorners(src,W,H);if(!Hm){calibrationValidation.textContent="Não foi possível calcular o plano métrico.";calibrationValidation.className="validation error";return false}
+  calibration={widthMm:W,heightMm:H,homography:Hm,timestamp:new Date().toISOString(),cameraFacing,viewport:getViewSize(),reference:"retangulo-4-pontos"};
   localStorage.setItem("mbDnpCalibration",JSON.stringify(calibration));
   localStorage.setItem("mbDnpCalibrationLabel",new Date().toLocaleString("pt-BR"));
-  calibrationState.textContent="Calibrado";
-  calibrationState.className="pill green";
-  calibrationValidation.textContent="Calibração registrada: "+pxPerMm.toFixed(2)+" px/mm. Mantenha a câmera e a distância estáveis.";
-  calibrationValidation.className="validation ok";
-  scaleValue.textContent=pxPerMm.toFixed(2)+" px/mm";
-
-  measurementPanel.classList.remove("hidden");
-  calibrationOverlay.classList.add("hidden");
-  setStep(3);
-  resetSamples();
+  calibrationState.textContent="Plano métrico";calibrationState.className="pill green";
+  calibrationValidation.textContent="Plano calibrado com 4 pontos e correção de perspectiva. Agora o ponto 0 será confirmado na ponte da armação.";
+  calibrationValidation.className="validation ok";scaleValue.textContent=W.toFixed(1)+" × "+H.toFixed(2)+" mm • homografia OK";
+  measurementPanel.classList.remove("hidden");calibrationOverlay.classList.add("hidden");setStep(3);resetSamples();
   calibrationPanel.scrollIntoView({behavior:"smooth",block:"start"});
-  setTimeout(()=>{
-    measurementPanel.scrollIntoView({behavior:"smooth",block:"start"});
-  },450);
-  return true;
+  setTimeout(()=>measurementPanel.scrollIntoView({behavior:"smooth",block:"start"}),450);
+  return true
 }
-$("confirmCalibrationBtn").addEventListener("click",setCalibrationFromHandles);
+$("confirmCalibrationBtn").addEventListener("click",setCalibration);
 
-function loadLocalCalibration(){
-  try{
-    const saved=JSON.parse(localStorage.getItem("mbDnpCalibration")||"null");
-    if(saved && saved.pxPerMm && saved.cameraFacing===cameraFacing){
-      calibration=saved;
-      calibrationState.textContent="Calibrado";
-      calibrationState.className="pill green";
-      calibrationValidation.textContent="Última calibração local: "+Number(saved.pxPerMm).toFixed(2)+" px/mm.";
-      calibrationValidation.className="validation ok";
-      scaleValue.textContent=Number(saved.pxPerMm).toFixed(2)+" px/mm";
-    }
-  }catch(e){console.warn(e);}
-}
 function invalidateCalibration(reason){
-  calibration=null;
-  calibrationState.textContent="Não calibrado";
-  calibrationState.className="pill amber";
-  calibrationValidation.textContent=reason||"Faça uma nova calibração.";
-  calibrationValidation.className="validation warn";
-  scaleValue.textContent="—";
-  measurementPanel.classList.add("hidden");
-  calibrationOverlay.classList.remove("hidden");
-  setStep(2);
-  resetSamples();
-  resetCalibrationHandles();
+  calibration=null;calibrationState.textContent="Não calibrado";calibrationState.className="pill amber";
+  calibrationValidation.textContent=reason||"Faça uma nova calibração.";calibrationValidation.className="validation warn";
+  scaleValue.textContent="—";measurementPanel.classList.add("hidden");calibrationOverlay.classList.remove("hidden");
+  setStep(2);resetSamples();resetCalibrationHandles()
 }
 
-function drawPoint(p,color){
-  ctx.beginPath();ctx.arc(p.x,p.y,5,0,Math.PI*2);ctx.fillStyle=color||"#55d6ff";ctx.fill();
-  ctx.beginPath();ctx.arc(p.x,p.y,11,0,Math.PI*2);ctx.strokeStyle="#fff";ctx.lineWidth=2;ctx.stroke();
+function drawPoint(p,color="#55d6ff"){
+  ctx.beginPath();ctx.arc(p.x,p.y,5,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();
+  ctx.beginPath();ctx.arc(p.x,p.y,11,0,Math.PI*2);ctx.strokeStyle="#fff";ctx.lineWidth=2;ctx.stroke()
 }
-function drawIris(lm,centerId,ringIds){
-  const cRaw=point(lm,centerId);
-  const ring=ringIds.map(id=>point(lm,id)).filter(Boolean);
-  if(!cRaw||ring.length<3)return null;
-  const c=toViewPoint(cRaw);
-  const ringView=ring.map(toViewPoint);
-  const r=median(ringView.map(p=>distance(c,p)));
-  ctx.beginPath();ctx.arc(c.x,c.y,r,0,Math.PI*2);
-  ctx.strokeStyle="rgba(85,214,255,.95)";ctx.lineWidth=2;ctx.stroke();
-  ctx.beginPath();ctx.moveTo(c.x-9,c.y);ctx.lineTo(c.x+9,c.y);ctx.moveTo(c.x,c.y-9);ctx.lineTo(c.x,c.y+9);
-  ctx.strokeStyle="#fff";ctx.lineWidth=2;ctx.stroke();
-  drawPoint(c,"#55d6ff");
-  return c;
+function drawIris(lm,cid,rids){
+  const cRaw=point(lm,cid),ring=rids.map(id=>point(lm,id)).filter(Boolean);if(!cRaw||ring.length<3)return null;
+  const c=toViewPoint(cRaw),rv=ring.map(toViewPoint),r=median(rv.map(p=>distance(c,p)));
+  ctx.beginPath();ctx.arc(c.x,c.y,r,0,Math.PI*2);ctx.strokeStyle="rgba(85,214,255,.95)";ctx.lineWidth=2;ctx.stroke();
+  ctx.beginPath();ctx.moveTo(c.x-9,c.y);ctx.lineTo(c.x+9,c.y);ctx.moveTo(c.x,c.y-9);ctx.lineTo(c.x,c.y+9);ctx.strokeStyle="#fff";ctx.lineWidth=2;ctx.stroke();drawPoint(c);return c
 }
-function drawContour(lm,ids){
-  const pts=ids.map(id=>point(lm,id)).filter(Boolean).map(toViewPoint);
-  if(pts.length<2)return;
-  ctx.beginPath();ctx.moveTo(pts[0].x,pts[0].y);
-  pts.slice(1).forEach(p=>ctx.lineTo(p.x,p.y));
-  ctx.strokeStyle="rgba(255,255,255,.55)";ctx.lineWidth=1.2;ctx.stroke();
+function drawContour(lm,ids){const pts=ids.map(id=>point(lm,id)).filter(Boolean).map(toViewPoint);if(pts.length<2)return;ctx.beginPath();ctx.moveTo(pts[0].x,pts[0].y);pts.slice(1).forEach(p=>ctx.lineTo(p.x,p.y));ctx.strokeStyle="rgba(255,255,255,.55)";ctx.lineWidth=1.2;ctx.stroke()}
+function drawLabel(t,p){ctx.font="800 11px system-ui";ctx.fillStyle="#fff";ctx.strokeStyle="rgba(0,0,0,.75)";ctx.lineWidth=3;ctx.strokeText(t,p.x+9,p.y-10);ctx.fillText(t,p.x+9,p.y-10)}
+function getNasalCandidate(lm){
+  const p=point(lm,168);return p?toViewPoint(p):null
 }
-function drawLabel(text,p){
-  ctx.font="800 11px system-ui,sans-serif";
-  ctx.fillStyle="#fff";ctx.strokeStyle="rgba(0,0,0,.72)";ctx.lineWidth=3;
-  ctx.strokeText(text,p.x+9,p.y-10);ctx.fillText(text,p.x+9,p.y-10);
-}
-function getFacialReference(lm,right,left){
-  const bridge=point(lm,168);
-  const nose=point(lm,1);
-  if(!bridge||!nose)return null;
-  return {x:(bridge.x+nose.x)/2,y:(right.y+left.y)/2};
-}
-function alignmentInfo(right,left){
-  const dy=left.y-right.y;
-  const dx=Math.max(.001,Math.abs(left.x-right.x));
-  const roll=Math.atan2(dy,dx)*180/Math.PI;
-  return {roll:roll,good:Math.abs(roll)<=5.5};
-}
-function addSample(lm,right,left,ref){
-  if(!calibration || selectedReading)return;
-  const rv=toViewPoint(right);
-  const lv=toViewPoint(left);
-  const refv=toViewPoint(ref);
-  const odMm=Math.abs(rv.x-refv.x)/calibration.pxPerMm;
-  const oeMm=Math.abs(lv.x-refv.x)/calibration.pxPerMm;
-  const dnpMm=odMm+oeMm;
-  if(![odMm,oeMm,dnpMm].every(Number.isFinite))return;
+function alignmentInfo(r,l){const dy=l.y-r.y,dx=Math.max(.001,Math.abs(l.x-r.x)),roll=Math.atan2(dy,dx)*180/Math.PI;return{roll,good:Math.abs(roll)<=5.5}}
 
-  samples.push({odMm:odMm,oeMm:oeMm,dnpMm:dnpMm});
-  if(samples.length>STABLE_FRAMES)samples.shift();
+function addSample(lm,right,left,nasalView){
+  if(!calibration||selectedReading)return;
+  const rv=toViewPoint(right),lv=toViewPoint(left);
+  const nasal=applyH(calibration.homography,nasalView);
+  const r=applyH(calibration.homography,rv),l=applyH(calibration.homography,lv);
+  /* Ponto 0 é a posição confirmada da ponte; OD/OE são distâncias horizontais a partir dele. */
+  const od=Math.abs(nasal.x-r.x),oe=Math.abs(l.x-nasal.x),dnp=od+oe;
+  if(![od,oe,dnp].every(Number.isFinite))return;
+  samples.push({odMm:od,oeMm:oe,dnpMm:dnp,nasalX:nasal.x});if(samples.length>STABLE_FRAMES)samples.shift();
   readingCount.textContent=samples.length+"/"+STABLE_FRAMES+" frames";
-
-  if(samples.length<STABLE_FRAMES){
-    const pct=Math.round(samples.length/STABLE_FRAMES*100);
-    measurementState.textContent="Estabilizando";
-    measurementState.className="pill";
-    stabilityState.textContent=pct+"%";
-    readingNote.textContent="Mantenha o rosto imóvel";
-    useReadingBtn.disabled=true;
-    return;
-  }
-
-  const od=median(samples.map(s=>s.odMm));
-  const oe=median(samples.map(s=>s.oeMm));
-  const dnp=od+oe;
+  if(samples.length<STABLE_FRAMES){measurementState.textContent="Estabilizando";measurementState.className="pill";stabilityState.textContent=Math.round(samples.length/STABLE_FRAMES*100)+"%";readingNote.textContent="Mantenha o rosto imóvel";useReadingBtn.disabled=true;return}
+  const odM=median(samples.map(s=>s.odMm)),oeM=median(samples.map(s=>s.oeMm)),dnpM=odM+oeM;
   const stability=Math.max(std(samples.map(s=>s.odMm)),std(samples.map(s=>s.oeMm)));
-
-  stableReading={
-    odMm:od,oeMm:oe,dnpMm:dnp,sdMm:stability,
-    timestamp:new Date().toISOString(),
-    calibration:Object.assign({},calibration)
-  };
-
-  odEl.textContent=od.toFixed(1)+" mm";
-  oeEl.textContent=oe.toFixed(1)+" mm";
-  dnpEl.textContent=dnp.toFixed(1)+" mm";
-
-  const stable=stability<=.65;
-  const acceptable=stability<=1.25;
-  stabilityState.textContent=stable?"Excelente":acceptable?"Boa":"Instável";
-  alignmentState.textContent="Alinhado";
-  measurementState.textContent=stable?"Leitura pronta":"Leitura estável";
-  measurementState.className=stable?"pill green":"pill";
-  readingNote.textContent=stable?"Variação baixa entre os frames":"Repita se desejar maior estabilidade";
-  useReadingBtn.disabled=!acceptable;
+  stableReading={odMm:odM,oeMm:oeM,dnpMm:dnpM,sdMm:stability,nasalReferenceMm:0,timestamp:new Date().toISOString(),calibration:Object.assign({},calibration)};
+  odEl.textContent=odM.toFixed(1)+" mm";oeEl.textContent=oeM.toFixed(1)+" mm";dnpEl.textContent=dnpM.toFixed(1)+" mm";
+  const stable=stability<=.65,acceptable=stability<=1.25;
+  stabilityState.textContent=stable?"Excelente":acceptable?"Boa":"Instável";alignmentState.textContent="Alinhado";
+  measurementState.textContent=stable?"Leitura pronta":"Leitura estável";measurementState.className=stable?"pill green":"pill";
+  readingNote.textContent=stable?"Variação baixa entre os frames":"Repita se desejar maior estabilidade";useReadingBtn.disabled=!acceptable
 }
+
 function onResults(res){
-  const size=getViewSize();
-  if(canvas.width!==Math.round(size.width)||canvas.height!==Math.round(size.height)){
-    canvas.width=Math.round(size.width);canvas.height=Math.round(size.height);
-  }
+  const s=getViewSize();if(canvas.width!==Math.round(s.width)||canvas.height!==Math.round(s.height)){canvas.width=Math.round(s.width);canvas.height=Math.round(s.height)}
   ctx.clearRect(0,0,canvas.width,canvas.height);
-
-  if(!res.multiFaceLandmarks||!res.multiFaceLandmarks.length){
-    faceState.textContent="Não detectado";
-    alignmentState.textContent="—";
-    statusDot.classList.remove("active");
-    measurementState.textContent=calibration?"Aguardando":"Calibre primeiro";
-    readingNote.textContent="Centralize o rosto dentro da área";
-    return;
+  if(!res.multiFaceLandmarks?.length){faceState.textContent="Não detectado";alignmentState.textContent="—";statusDot.classList.remove("active");measurementState.textContent=calibration?"Aguardando":"Calibre primeiro";readingNote.textContent="Centralize o rosto dentro da área";return}
+  const lm=res.multiFaceLandmarks[0],right=point(lm,RIGHT_IRIS_CENTER_ID),left=point(lm,LEFT_IRIS_CENTER_ID);if(!right||!left){faceState.textContent="Olhos não detectados";return}
+  drawContour(lm,RIGHT_EYE_CONTOUR);drawContour(lm,LEFT_EYE_CONTOUR);
+  const rv=drawIris(lm,RIGHT_IRIS_CENTER_ID,RIGHT_IRIS_RING_IDS),lv=drawIris(lm,LEFT_IRIS_CENTER_ID,LEFT_IRIS_RING_IDS);if(!rv||!lv)return;
+  const align=alignmentInfo(right,left),candidate=getNasalCandidate(lm);if(!candidate)return;
+  if(nasalPoint.x===0&&nasalPoint.y===0)nasalPoint=candidate;
+  if(!calibration){
+    ctx.beginPath();ctx.moveTo(candidate.x,candidate.y-18);ctx.lineTo(candidate.x,candidate.y+18);ctx.strokeStyle="rgba(255,204,102,.95)";ctx.lineWidth=2;ctx.stroke();
+    drawLabel("PONTE / 0",candidate)
   }
-
-  const lm=res.multiFaceLandmarks[0];
-  const right=point(lm,RIGHT_IRIS_CENTER_ID);
-  const left=point(lm,LEFT_IRIS_CENTER_ID);
-  if(!right||!left){
-    faceState.textContent="Olhos não detectados";
-    return;
-  }
-
-  drawContour(lm,RIGHT_EYE_CONTOUR);
-  drawContour(lm,LEFT_EYE_CONTOUR);
-  const rightView=drawIris(lm,RIGHT_IRIS_CENTER_ID,RIGHT_IRIS_RING_IDS);
-  const leftView=drawIris(lm,LEFT_IRIS_CENTER_ID,LEFT_IRIS_RING_IDS);
-  if(!rightView||!leftView)return;
-
-  const align=alignmentInfo(right,left);
-  const ref=getFacialReference(lm,right,left);
-  if(!ref)return;
-  const refView=toViewPoint(ref);
-
-  ctx.beginPath();ctx.moveTo(refView.x,refView.y-15);ctx.lineTo(refView.x,refView.y+15);
-  ctx.strokeStyle="rgba(255,204,102,.95)";ctx.lineWidth=2;ctx.stroke();
-  drawLabel("OD",rightView);drawLabel("OE",leftView);
-
-  if(calibration){
-    ctx.beginPath();ctx.moveTo(rightView.x,rightView.y);ctx.lineTo(refView.x,refView.y);ctx.lineTo(leftView.x,leftView.y);
-    ctx.strokeStyle="rgba(85,214,255,.58)";ctx.lineWidth=1.5;ctx.stroke();
-  }
-
-  faceState.textContent="Detectado";
-  alignmentState.textContent=align.good?"Alinhado":"Ajustar ("+align.roll.toFixed(1)+"°)";
-  statusDot.classList.add("active");
-
+  faceState.textContent="Detectado";alignmentState.textContent=align.good?"Alinhado":"Ajustar ("+align.roll.toFixed(1)+"°)";statusDot.classList.add("active");
   if(calibration&&align.good){
-    addSample(lm,right,left,ref);
-  }else if(!calibration){
-    measurementState.textContent="Calibre primeiro";
-    readingNote.textContent="Conclua a calibração física";
-  }else{
-    measurementState.textContent="Ajuste a cabeça";
-    readingNote.textContent="Mantenha os olhos no mesmo nível";
-  }
+    /* Mantém o ponto 0 inicialmente no ponto anatômico de referência; o operador pode ajustar com o botão dedicado futuramente. */
+    nasalPoint=candidate;
+    ctx.beginPath();ctx.moveTo(rv.x,rv.y);ctx.lineTo(nasalPoint.x,nasalPoint.y);ctx.lineTo(lv.x,lv.y);ctx.strokeStyle="rgba(85,214,255,.58)";ctx.lineWidth=1.5;ctx.stroke();
+    ctx.beginPath();ctx.moveTo(nasalPoint.x,nasalPoint.y-20);ctx.lineTo(nasalPoint.x,nasalPoint.y+20);ctx.strokeStyle="#ffcc66";ctx.lineWidth=3;ctx.stroke();drawLabel("0 • PONTE",nasalPoint);
+    nasalReferenceValue.textContent="0,0 mm • referência nasal";
+    addSample(lm,right,left,nasalPoint)
+  }else if(!calibration){measurementState.textContent="Calibre primeiro";readingNote.textContent="Conclua o plano métrico de 4 pontos"}
+  else{measurementState.textContent="Ajuste a cabeça";readingNote.textContent="Mantenha os olhos no mesmo nível"}
 }
 
-const faceMesh=new FaceMesh({
-  locateFile:file=>"https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/"+file
-});
-faceMesh.setOptions({
-  maxNumFaces:1,
-  refineLandmarks:true,
-  minDetectionConfidence:.6,
-  minTrackingConfidence:.6
-});
+const faceMesh=new FaceMesh({locateFile:file=>"https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/"+file});
+faceMesh.setOptions({maxNumFaces:1,refineLandmarks:true,minDetectionConfidence:.6,minTrackingConfidence:.6});
 faceMesh.onResults(onResults);
 
 async function openCamera(){
-  stopCamera();
-  const constraints={
-    audio:false,
-    video:{facingMode:{ideal:cameraFacing},width:{ideal:1280},height:{ideal:720}}
-  };
-  try{
-    stream=await navigator.mediaDevices.getUserMedia(constraints);
-  }catch(e){
-    stream=await navigator.mediaDevices.getUserMedia({audio:false,video:true});
-  }
-  video.srcObject=stream;
-  await video.play();
-  $("cameraTitle").textContent=cameraFacing==="user"?"Frontal":"Traseira";
-  $("cameraStatus").textContent=cameraFacing==="user"?"Câmera frontal selecionada":"Câmera traseira selecionada";
-  $("cameraQuality").textContent="Ativa";
-  statusDot.classList.add("active");
+  stopCamera();const constraints={audio:false,video:{facingMode:{ideal:cameraFacing},width:{ideal:1280},height:{ideal:720}}};
+  try{stream=await navigator.mediaDevices.getUserMedia(constraints)}catch(e){stream=await navigator.mediaDevices.getUserMedia({audio:false,video:true})}
+  video.srcObject=stream;await video.play();$("cameraTitle").textContent=cameraFacing==="user"?"Frontal":"Traseira";$("cameraStatus").textContent=cameraFacing==="user"?"Câmera frontal selecionada":"Câmera traseira selecionada";$("cameraQuality").textContent="Ativa";statusDot.classList.add("active")
 }
-function stopCamera(){
-  if(stream)stream.getTracks().forEach(t=>t.stop());
-  stream=null;
-  if(animationFrame)cancelAnimationFrame(animationFrame);
-  animationFrame=null;
-}
-async function processFrame(){
-  if(!running)return;
-  if(video.readyState>=2){
-    try{await faceMesh.send({image:video});}catch(e){console.error(e);}
-  }
-  animationFrame=requestAnimationFrame(processFrame);
-}
-async function selectCamera(facing){
-  cameraFacing=facing;
-  frontBtn.classList.toggle("active",facing==="user");
-  rearBtn.classList.toggle("active",facing==="environment");
-  if(!stream)return;
-  try{
-    await openCamera();
-    invalidateCalibration("A câmera foi alterada. Faça uma nova calibração para esta câmera.");
-  }catch(e){
-    console.error(e);
-    $("cameraQuality").textContent="Erro";
-    alert("Não foi possível acessar a câmera selecionada.");
-  }
-}
+function stopCamera(){if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;if(animationFrame)cancelAnimationFrame(animationFrame);animationFrame=null}
+async function processFrame(){if(!running)return;if(video.readyState>=2){try{await faceMesh.send({image:video})}catch(e){console.error(e)}}animationFrame=requestAnimationFrame(processFrame)}
+async function selectCamera(facing){cameraFacing=facing;frontBtn.classList.toggle("active",facing==="user");rearBtn.classList.toggle("active",facing==="environment");if(!stream)return;try{await openCamera();invalidateCalibration("A câmera foi alterada. Faça uma nova calibração para esta câmera.")}catch(e){console.error(e);$("cameraQuality").textContent="Erro";alert("Não foi possível acessar a câmera selecionada.")}}
+
 function resetSamples(){
-  samples=[];stableReading=null;selectedReading=null;
-  odEl.textContent="—";oeEl.textContent="—";dnpEl.textContent="—";
-  readingCount.textContent="0/"+STABLE_FRAMES+" frames";
-  readingNote.textContent=calibration?"Aguardando rosto":"Calibre primeiro";
-  stabilityState.textContent="—";faceState.textContent="—";alignmentState.textContent="—";
-  measurementState.textContent=calibration?"Aguardando":"Aguardando";
-  measurementState.className="pill";
-  useReadingBtn.disabled=true;
+  samples=[];stableReading=null;selectedReading=null;odEl.textContent="—";oeEl.textContent="—";dnpEl.textContent="—";
+  readingCount.textContent="0/"+STABLE_FRAMES+" frames";readingNote.textContent=calibration?"Aguardando rosto":"Calibre primeiro";
+  stabilityState.textContent="—";faceState.textContent="—";alignmentState.textContent="—";measurementState.textContent=calibration?"Aguardando":"Aguardando";measurementState.className="pill";useReadingBtn.disabled=true
 }
 async function start(){
-  intro.classList.add("hidden");
-  workspace.classList.remove("hidden");
-  savedPanel.classList.add("hidden");
-  settingsPanel.classList.add("hidden");
-  try{
-    await openCamera();
-    running=true;
-    processFrame();
-    calibrationOverlay.classList.remove("hidden");
-    measurementPanel.classList.add("hidden");
-    setStep(2);
-    calibration=null;
-    calibrationState.textContent="Não calibrado";
-    calibrationState.className="pill amber";
-    calibrationValidation.textContent="Faça a calibração física desta sessão antes de medir.";
-    calibrationValidation.className="validation warn";
-    scaleValue.textContent="—";
-    resetCalibrationHandles();
-  }catch(e){
-    console.error(e);
-    alert("Permita o acesso à câmera no navegador e tente novamente.");
-    resetApp();
-  }
+  intro.classList.add("hidden");workspace.classList.remove("hidden");savedPanel.classList.add("hidden");settingsPanel.classList.add("hidden");
+  try{await openCamera();running=true;processFrame();calibrationOverlay.classList.remove("hidden");measurementPanel.classList.add("hidden");setStep(2);calibration=null;nasalPoint={x:0,y:0};calibrationState.textContent="Não calibrado";calibrationState.className="pill amber";calibrationValidation.textContent="Faça a calibração física desta sessão antes de medir.";calibrationValidation.className="validation warn";scaleValue.textContent="—";resetCalibrationHandles()}
+  catch(e){console.error(e);alert("Permita o acesso à câmera no navegador e tente novamente.");resetApp()}
 }
-function resetApp(){
-  running=false;stopCamera();
-  workspace.classList.add("hidden");intro.classList.remove("hidden");
-  calibrationOverlay.classList.add("hidden");measurementPanel.classList.add("hidden");
-  osPanel.classList.add("hidden");savedPanel.classList.add("hidden");
-  setStep(1);statusDot.classList.remove("active");calibration=null;resetSamples();
-}
+function resetApp(){running=false;stopCamera();workspace.classList.add("hidden");intro.classList.remove("hidden");calibrationOverlay.classList.add("hidden");measurementPanel.classList.add("hidden");osPanel.classList.add("hidden");savedPanel.classList.add("hidden");setStep(1);statusDot.classList.remove("active");calibration=null;resetSamples()}
 function prepareOs(){
-  if(!stableReading)return;
-  selectedReading=JSON.parse(JSON.stringify(stableReading));
-  osDnp.textContent=selectedReading.dnpMm.toFixed(1)+" mm";
-  osMono.textContent=selectedReading.odMm.toFixed(1)+" / "+selectedReading.oeMm.toFixed(1)+" mm";
-  useReadingBtn.disabled=true;
-  measurementState.textContent="DNP selecionada";
-  measurementState.className="pill green";
-  readingNote.textContent="Leitura congelada para a O.S.";
-  setStep(4);osPanel.classList.remove("hidden");
-  osPanel.scrollIntoView({behavior:"smooth",block:"start"});
+  if(!stableReading)return;selectedReading=JSON.parse(JSON.stringify(stableReading));osDnp.textContent=selectedReading.dnpMm.toFixed(1)+" mm";osMono.textContent=selectedReading.odMm.toFixed(1)+" / "+selectedReading.oeMm.toFixed(1)+" mm";
+  useReadingBtn.disabled=true;measurementState.textContent="DNP selecionada";measurementState.className="pill green";readingNote.textContent="Leitura congelada para a O.S.";setStep(4);osPanel.classList.remove("hidden");osPanel.scrollIntoView({behavior:"smooth",block:"start"})
 }
-useReadingBtn.addEventListener("click",prepareOs);
-$("newReadingBtn").addEventListener("click",()=>{resetSamples();setStep(3);});
-startBtn.addEventListener("click",start);
-frontBtn.addEventListener("click",()=>selectCamera("user"));
-rearBtn.addEventListener("click",()=>selectCamera("environment"));
+useReadingBtn.addEventListener("click",prepareOs);$("newReadingBtn").addEventListener("click",()=>{resetSamples();setStep(3)});
+startBtn.addEventListener("click",start);frontBtn.addEventListener("click",()=>selectCamera("user"));rearBtn.addEventListener("click",()=>selectCamera("environment"));
 
-function nextOsNumber(){
-  const day=new Date().toISOString().slice(0,10).replaceAll("-","");
-  const key="mbDnpOsCounter_"+day;
-  const n=Number(localStorage.getItem(key)||0)+1;
-  localStorage.setItem(key,String(n));
-  return "DNP-"+day+"-"+String(n).padStart(3,"0");
-}
+function nextOsNumber(){const day=new Date().toISOString().slice(0,10).replaceAll("-",""),key="mbDnpOsCounter_"+day,n=Number(localStorage.getItem(key)||0)+1;localStorage.setItem(key,String(n));return"DNP-"+day+"-"+String(n).padStart(3,"0")}
 function collectRecord(){
-  const reading=selectedReading || stableReading;
-  if(!reading)return null;
-  const name=customerName.value.trim();
-  if(!name){
-    osValidation.textContent="Informe o nome do cliente para gerar a O.S.";
-    osValidation.className="validation error";
-    customerName.focus();
-    return null;
-  }
-  const number=currentOs&&currentOs.number?currentOs.number:nextOsNumber();
-  currentOs={number:number};
-  return {
-    schema:"MB.Optica.DNP.OS.v1",
-    number:number,
-    createdAt:new Date().toISOString(),
-    customer:{
-      name:name,
-      phone:customerPhone.value.trim(),
-      cpf:customerCpf.value.trim(),
-      type:customerType.value,
-      notes:customerNotes.value.trim()
-    },
-    sale:{number:saleNumber.value.trim()},
-    measurement:{
-      odMm:reading.odMm,
-      oeMm:reading.oeMm,
-      dnpMm:reading.dnpMm,
-      stabilitySdMm:reading.sdMm
-    },
-    calibration:reading.calibration,
-    source:"MB.Óptica DNP",
-    integrationStatus:"pending"
-  };
+  const reading=selectedReading||stableReading;if(!reading)return null;const name=customerName.value.trim();
+  if(!name){osValidation.textContent="Informe o nome do cliente para gerar a O.S.";osValidation.className="validation error";customerName.focus();return null}
+  const number=currentOs?.number||nextOsNumber();currentOs={number};
+  return{schema:"MB.Optica.DNP.OS.v2",number,createdAt:new Date().toISOString(),customer:{name,phone:customerPhone.value.trim(),cpf:customerCpf.value.trim(),type:customerType.value,notes:customerNotes.value.trim()},sale:{number:saleNumber.value.trim()},measurement:{odMm:reading.odMm,oeMm:reading.oeMm,dnpMm:reading.dnpMm,stabilitySdMm:reading.sdMm,nasalReferenceMm:0,referenceType:"ponte-da-armacao"},calibration:reading.calibration,source:"MB.Óptica DNP",integrationStatus:"pending"}
 }
 function saveRecord(){
-  const record=collectRecord();
-  if(!record)return;
-  const list=JSON.parse(localStorage.getItem("mbDnpOrders")||"[]");
-  const existing=list.findIndex(x=>x.number===record.number);
-  if(existing>=0)list[existing]=record;else list.unshift(record);
-  localStorage.setItem("mbDnpOrders",JSON.stringify(list));
-  savedRecord=record;
-  osNumber.textContent=record.number;
-  osValidation.textContent="O.S. salva neste dispositivo.";
-  osValidation.className="validation ok";
-  savedPanel.classList.remove("hidden");
-  $("savedTitle").textContent="O.S. "+record.number+" criada";
-  $("savedSummary").textContent=record.customer.name+" • DNP "+record.measurement.dnpMm.toFixed(1)+" mm • OD "+record.measurement.odMm.toFixed(1)+" mm • OE "+record.measurement.oeMm.toFixed(1)+" mm.";
-  updateLocalStats();
-  savedPanel.scrollIntoView({behavior:"smooth",block:"start"});
+  const record=collectRecord();if(!record)return;const list=JSON.parse(localStorage.getItem("mbDnpOrders")||"[]"),existing=list.findIndex(x=>x.number===record.number);if(existing>=0)list[existing]=record;else list.unshift(record);
+  localStorage.setItem("mbDnpOrders",JSON.stringify(list));savedRecord=record;osNumber.textContent=record.number;osValidation.textContent="O.S. salva neste dispositivo.";osValidation.className="validation ok";savedPanel.classList.remove("hidden");
+  $("savedTitle").textContent="O.S. "+record.number+" criada";$("savedSummary").textContent=record.customer.name+" • DNP "+record.measurement.dnpMm.toFixed(1)+" mm • OD "+record.measurement.odMm.toFixed(1)+" mm • OE "+record.measurement.oeMm.toFixed(1)+" mm.";updateLocalStats();savedPanel.scrollIntoView({behavior:"smooth",block:"start"})
 }
 $("generateOsBtn").addEventListener("click",saveRecord);
-$("saveDraftBtn").addEventListener("click",()=>{
-  const record=collectRecord();
-  if(!record)return;
-  record.integrationStatus="draft";
-  const list=JSON.parse(localStorage.getItem("mbDnpOrders")||"[]");
-  const existing=list.findIndex(x=>x.number===record.number);
-  if(existing>=0)list[existing]=record;else list.unshift(record);
-  localStorage.setItem("mbDnpOrders",JSON.stringify(list));
-  osNumber.textContent=record.number;
-  osValidation.textContent="Rascunho "+record.number+" salvo localmente.";
-  osValidation.className="validation ok";
-  updateLocalStats();
-});
+$("saveDraftBtn").addEventListener("click",()=>{const record=collectRecord();if(!record)return;record.integrationStatus="draft";const list=JSON.parse(localStorage.getItem("mbDnpOrders")||"[]"),existing=list.findIndex(x=>x.number===record.number);if(existing>=0)list[existing]=record;else list.unshift(record);localStorage.setItem("mbDnpOrders",JSON.stringify(list));osNumber.textContent=record.number;osValidation.textContent="Rascunho "+record.number+" salvo localmente.";osValidation.className="validation ok";updateLocalStats()});
 
 $("printBtn").addEventListener("click",()=>{
-  if(!savedRecord)return;
-  const w=window.open("","_blank","width=800,height=900");
-  if(!w){alert("O navegador bloqueou a janela de impressão.");return}
-  const r=savedRecord;
-  w.document.write(
-    "<!doctype html><html lang='pt-BR'><head><meta charset='utf-8'><title>"+r.number+"</title><style>"+
-    "body{font-family:Arial,sans-serif;color:#111;padding:36px;max-width:760px;margin:auto}"+
-    "h1{margin:0 0 4px}h2{margin-top:28px;border-bottom:1px solid #ddd;padding-bottom:6px}"+
-    ".muted{color:#666;font-size:12px}.grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}"+
-    ".box{border:1px solid #ccc;padding:14px;border-radius:8px}.label{font-size:11px;color:#666}.value{font-size:20px;font-weight:700;margin-top:5px}"+
-    "table{width:100%;border-collapse:collapse;margin-top:14px}td,th{border:1px solid #ddd;padding:9px;text-align:left}.footer{margin-top:40px;font-size:11px;color:#666}"+
-    "</style></head><body><h1>MB.Óptica</h1><div class='muted'>Ordem de Serviço • "+r.number+"</div>"+
-    "<h2>Cliente</h2><p><b>"+escapeHtml(r.customer.name)+"</b><br>Telefone: "+escapeHtml(r.customer.phone||"—")+"<br>CPF: "+escapeHtml(r.customer.cpf||"—")+"<br>Tipo: "+escapeHtml(r.customer.type)+"</p>"+
-    "<h2>Medição DNP</h2><div class='grid'><div class='box'><div class='label'>OD</div><div class='value'>"+r.measurement.odMm.toFixed(1)+" mm</div></div>"+
-    "<div class='box'><div class='label'>OE</div><div class='value'>"+r.measurement.oeMm.toFixed(1)+" mm</div></div>"+
-    "<div class='box'><div class='label'>DNP</div><div class='value'>"+r.measurement.dnpMm.toFixed(1)+" mm</div></div></div>"+
-    "<h2>Dados do atendimento</h2><table><tr><th>Venda</th><td>"+escapeHtml(r.sale.number||"—")+"</td></tr><tr><th>Estabilidade</th><td>±"+r.measurement.stabilitySdMm.toFixed(2)+" mm</td></tr>"+
-    "<tr><th>Calibração</th><td>"+r.calibration.referenceMm.toFixed(1)+" mm • "+r.calibration.pxPerMm.toFixed(2)+" px/mm</td></tr></table>"+
-    "<h2>Observações</h2><p>"+escapeHtml(r.customer.notes||"—")+"</p><div class='footer'>MB.Óptica DNP • registro local • validar conforme protocolo da ótica.</div></body></html>"
-  );
-  w.document.close();w.focus();w.print();
+  if(!savedRecord)return;const w=window.open("","_blank","width=800,height=900");if(!w){alert("O navegador bloqueou a janela de impressão.");return}const r=savedRecord;
+  w.document.write("<!doctype html><html lang='pt-BR'><head><meta charset='utf-8'><title>"+r.number+"</title><style>body{font-family:Arial;color:#111;padding:36px;max-width:760px;margin:auto}h1{margin:0 0 4px}h2{margin-top:28px;border-bottom:1px solid #ddd;padding-bottom:6px}.muted{color:#666;font-size:12px}.grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}.box{border:1px solid #ccc;padding:14px;border-radius:8px}.label{font-size:11px;color:#666}.value{font-size:20px;font-weight:700;margin-top:5px}table{width:100%;border-collapse:collapse;margin-top:14px}td,th{border:1px solid #ddd;padding:9px;text-align:left}.footer{margin-top:40px;font-size:11px;color:#666}</style></head><body><h1>MB.Óptica</h1><div class='muted'>Ordem de Serviço • "+r.number+"</div><h2>Cliente</h2><p><b>"+escapeHtml(r.customer.name)+"</b><br>Telefone: "+escapeHtml(r.customer.phone||"—")+"<br>CPF: "+escapeHtml(r.customer.cpf||"—")+"<br>Tipo: "+escapeHtml(r.customer.type)+"</p><h2>Medição DNP</h2><div class='grid'><div class='box'><div class='label'>OD</div><div class='value'>"+r.measurement.odMm.toFixed(1)+" mm</div></div><div class='box'><div class='label'>OE</div><div class='value'>"+r.measurement.oeMm.toFixed(1)+" mm</div></div><div class='box'><div class='label'>DNP</div><div class='value'>"+r.measurement.dnpMm.toFixed(1)+" mm</div></div></div><h2>Referência da medição</h2><table><tr><th>Ponto 0</th><td>Ponte da armação</td></tr><tr><th>Estabilidade</th><td>±"+r.measurement.stabilitySdMm.toFixed(2)+" mm</td></tr><tr><th>Plano métrico</th><td>"+r.calibration.widthMm.toFixed(1)+" × "+r.calibration.heightMm.toFixed(2)+" mm • 4 pontos + homografia</td></tr></table><h2>Observações</h2><p>"+escapeHtml(r.customer.notes||"—")+"</p><div class='footer'>MB.Óptica DNP • registro local • validar conforme protocolo da ótica.</div></body></html>");
+  w.document.close();w.focus();w.print()
 });
-
-function escapeHtml(v){
-  return String(v).replace(/[&<>"']/g,function(c){
-    return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[c];
-  });
-}
-$("anotherBtn").addEventListener("click",()=>{
-  customerName.value="";customerPhone.value="";customerCpf.value="";saleNumber.value="";customerNotes.value="";
-  currentOs=null;savedRecord=null;savedPanel.classList.add("hidden");osPanel.classList.add("hidden");
-  invalidateCalibration("Novo atendimento: faça uma nova calibração para a posição atual.");
-  workspace.scrollIntoView({behavior:"smooth"});
-});
-$("settingsBtn").addEventListener("click",()=>{
-  settingsPanel.classList.toggle("hidden");updateLocalStats();
-});
+function escapeHtml(v){return String(v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[c]))}
+$("anotherBtn").addEventListener("click",()=>{customerName.value="";customerPhone.value="";customerCpf.value="";saleNumber.value="";customerNotes.value="";currentOs=null;savedRecord=null;savedPanel.classList.add("hidden");osPanel.classList.add("hidden");invalidateCalibration("Novo atendimento: faça uma nova calibração para a posição atual.");workspace.scrollIntoView({behavior:"smooth"})});
+$("settingsBtn").addEventListener("click",()=>{settingsPanel.classList.toggle("hidden");updateLocalStats()});
 $("closeSettingsBtn").addEventListener("click",()=>settingsPanel.classList.add("hidden"));
-$("clearLocalBtn").addEventListener("click",()=>{
-  if(!confirm("Limpar calibração e O.S. salvas neste dispositivo?"))return;
-  localStorage.removeItem("mbDnpCalibration");
-  localStorage.removeItem("mbDnpCalibrationLabel");
-  localStorage.removeItem("mbDnpOrders");
-  calibration=null;updateLocalStats();
-  if(running)invalidateCalibration("Dados locais limpos. Faça uma nova calibração.");
-});
-function updateLocalStats(){
-  $("lastCalibration").textContent=localStorage.getItem("mbDnpCalibrationLabel")||"Nenhuma";
-  const list=JSON.parse(localStorage.getItem("mbDnpOrders")||"[]");
-  $("localCount").textContent=String(list.length);
-}
-updateLocalStats();
-setStep(1);
+$("clearLocalBtn").addEventListener("click",()=>{if(!confirm("Limpar calibração e O.S. salvas neste dispositivo?"))return;localStorage.removeItem("mbDnpCalibration");localStorage.removeItem("mbDnpCalibrationLabel");localStorage.removeItem("mbDnpOrders");calibration=null;updateLocalStats();if(running)invalidateCalibration("Dados locais limpos. Faça uma nova calibração.")});
+function updateLocalStats(){$("lastCalibration").textContent=localStorage.getItem("mbDnpCalibrationLabel")||"Nenhuma";const list=JSON.parse(localStorage.getItem("mbDnpOrders")||"[]");$("localCount").textContent=String(list.length)}
+updateLocalStats();setStep(1);
