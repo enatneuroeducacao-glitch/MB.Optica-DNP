@@ -109,7 +109,7 @@ window.addEventListener("pointermove",moveDrag);window.addEventListener("pointer
 window.addEventListener("resize",()=>{if(!workspace.classList.contains("hidden"))renderCalibrationHandles()});
 referenceMmEl.addEventListener("input",renderCalibrationHandles);referenceHeightMmEl.addEventListener("input",renderCalibrationHandles);
 
-$("repositionBtn").addEventListener("click",()=>{resetCalibrationHandles();calibrationValidation.textContent="Pontos reiniciados. Alinhe-os aos quatro cantos.";calibrationValidation.className="validation"});
+$("repositionBtn").addEventListener("click",()=>{resetCalibrationHandles();calibrationValidation.textContent="Pontos reiniciados. Alinhe-os aos quatro cantos do cartão.";calibrationValidation.className="validation"});
 
 /* Homografia: transforma os 4 cantos capturados no plano métrico conhecido. */
 function solve8(A,b){
@@ -167,6 +167,16 @@ function screenXForMetric(targetMm,yScreen,guessX){
   }
   return (lo+hi)/2
 }
+function drawReadableText(text,x,y,options={}){
+  ctx.save();
+  ctx.translate(canvas.width,0);
+  ctx.scale(-1,1);
+  if(options.font)ctx.font=options.font;
+  if(options.fillStyle)ctx.fillStyle=options.fillStyle;
+  if(options.textAlign)ctx.textAlign=options.textAlign;
+  ctx.fillText(text,x,y);
+  ctx.restore();
+}
 function drawCalibratedRuler(nasalView,pupilY){
   if(!calibration?.homography)return;
   const s=getViewSize();
@@ -186,8 +196,7 @@ function drawCalibratedRuler(nasalView,pupilY){
   // Zero absoluto: ponte da armação.
   ctx.strokeStyle="#ffcc66";ctx.lineWidth=2.5;
   ctx.beginPath();ctx.moveTo(zeroX,y-12);ctx.lineTo(zeroX,y+14);ctx.stroke();
-  ctx.fillStyle="#ffdf8a";ctx.font="900 9px system-ui";ctx.textAlign="center";
-  ctx.fillText("0",zeroX,y+27);
+  drawReadableText("0",zeroX,y+27,{fillStyle:"#ffdf8a",font:"900 9px system-ui",textAlign:"center"});
 
   for(let mm=step;mm<=maxEachSide;mm+=step){
     const xr=screenXForMetric(nasalMetric.x-mm,y,zeroX-mm*4);
@@ -203,17 +212,13 @@ function drawCalibratedRuler(nasalView,pupilY){
       ctx.beginPath();ctx.moveTo(x,y-tickH);ctx.lineTo(x,y+tickH*.55);ctx.stroke();
 
       if(major5){
-        ctx.fillStyle=major10?"rgba(255,255,255,.98)":"rgba(225,242,255,.9)";
-        ctx.font=major10?"800 8px system-ui":"700 7px system-ui";
-        ctx.textAlign="center";
-        ctx.fillText(String(mm),x,y+19);
+        drawReadableText(String(mm),x,y+19,{fillStyle:major10?"rgba(255,255,255,.98)":"rgba(225,242,255,.9)",font:major10?"800 8px system-ui":"700 7px system-ui",textAlign:"center"});
       }
     }
   }
 
-  ctx.fillStyle="rgba(210,236,255,.78)";ctx.font="800 7px system-ui";
-  ctx.textAlign="left";ctx.fillText("OD • 0 → pupila",Math.max(8,zeroX-300),y-15);
-  ctx.textAlign="right";ctx.fillText("pupila → 0 • OE",Math.min(s.width-8,zeroX+300),y-15);
+  drawReadableText("OD • 0 → pupila",Math.max(8,zeroX-300),y-15,{fillStyle:"rgba(210,236,255,.78)",font:"800 7px system-ui",textAlign:"left"});
+  drawReadableText("pupila → 0 • OE",Math.min(s.width-8,zeroX+300),y-15,{fillStyle:"rgba(210,236,255,.78)",font:"800 7px system-ui",textAlign:"right"});
   ctx.restore();
 }
 function renderMeasurementRuler(){
@@ -224,15 +229,23 @@ function renderMeasurementRuler(){
 function setCalibration(){
 
   const W=Number(referenceMmEl.value),H=Number(referenceHeightMmEl.value);
-  if(!Number.isFinite(W)||W<10||W>300||!Number.isFinite(H)||H<10||H>300){
-    calibrationValidation.textContent="Informe largura e altura válidas entre 10 e 300 mm.";calibrationValidation.className="validation error";return false
+  const CARD_W=85.60,CARD_H=53.98,CARD_ASPECT=CARD_W/CARD_H;
+  if(Math.abs(W-CARD_W)>.01||Math.abs(H-CARD_H)>.01){
+    calibrationValidation.textContent="Esta versão usa exclusivamente o cartão padrão ID-1: 85,60 × 53,98 mm.";
+    calibrationValidation.className="validation error";return false
   }
   const src=["tl","tr","br","bl"].map(k=>calibrationPoints[k]);
   if(distance(src[0],src[1])<80||distance(src[3],src[2])<80||distance(src[0],src[3])<40){
     calibrationValidation.textContent="Os 4 pontos precisam estar nos cantos da referência.";calibrationValidation.className="validation warn";return false
   }
+  const top=distance(src[0],src[1]),bottom=distance(src[3],src[2]),left=distance(src[0],src[3]),right=distance(src[1],src[2]);
+  const observedAspect=((top+bottom)/2)/Math.max(0.001,(left+right)/2);
+  if(!Number.isFinite(observedAspect)||Math.abs(observedAspect-CARD_ASPECT)/CARD_ASPECT>.18){
+    calibrationValidation.textContent="A proporção dos 4 pontos não parece um cartão padrão. Confira os cantos do cartão.";
+    calibrationValidation.className="validation warn";return false
+  }
   const Hm=homographyFromCorners(src,W,H);if(!Hm){calibrationValidation.textContent="Não foi possível calcular o plano métrico.";calibrationValidation.className="validation error";return false}
-  calibration={widthMm:W,heightMm:H,homography:Hm,timestamp:new Date().toISOString(),cameraFacing,viewport:getViewSize(),reference:"retangulo-4-pontos"};
+  calibration={version:"MB-DNP-BIOMETRIC-v1",widthMm:W,heightMm:H,homography:Hm,timestamp:new Date().toISOString(),cameraFacing,viewport:getViewSize(),reference:"cartao-id1-85.60x53.98",referencePlane:"card",scaleSource:"physical-card"};
   localStorage.setItem("mbDnpCalibration",JSON.stringify(calibration));
   localStorage.setItem("mbDnpCalibrationLabel",new Date().toLocaleString("pt-BR"));
   calibrationState.textContent="Plano métrico";calibrationState.className="pill green";
@@ -293,9 +306,7 @@ function drawMetricLine(a,b,label,value,side){
   ctx.strokeStyle="rgba(255,204,102,.92)";ctx.lineWidth=2;
   ctx.beginPath();ctx.moveTo(x1,y);ctx.lineTo(x2,y);ctx.stroke();
   [x1,x2].forEach(x=>{ctx.beginPath();ctx.moveTo(x,y-6);ctx.lineTo(x,y+6);ctx.stroke()});
-  ctx.font="800 9px system-ui";ctx.fillStyle="#ffdf8a";
-  ctx.textAlign=side==="OD"?"right":"left";
-  ctx.fillText(label+"  "+value.toFixed(1)+" mm",(x1+x2)/2,y-8);
+  drawReadableText(label+"  "+value.toFixed(1)+" mm",(x1+x2)/2,y-8,{fillStyle:"#ffdf8a",font:"800 9px system-ui",textAlign:side==="OD"?"right":"left"});
   ctx.restore();
 }
 function drawMeasurementGuides(rv,lv,nasal){
@@ -331,13 +342,6 @@ function addSample(lm,right,left,nasalView){
   // Para uma leitura válida, a ponte precisa ficar entre as duas pupilas.
   if(!(r.x<nasal.x&&nasal.x<l.x))return;
   if(![od,oe,dnp].every(Number.isFinite)||od<0||oe<0||dnp<=0)return;
-  // Evita aceitar leituras obviamente incompatíveis com a geometria capturada.
-  // Não impõe mínimo de DNP; apenas bloqueia escala degenerada.
-  if(dnp<20||dnp>100){
-    readingNote.textContent="Escala fora da faixa de validação. Refaça a calibração física.";
-    useReadingBtn.disabled=true;
-    return;
-  }
   samples.push({odMm:od,oeMm:oe,dnpMm:dnp,nasalX:nasal.x});if(samples.length>STABLE_FRAMES)samples.shift();
   readingCount.textContent=samples.length+"/"+STABLE_FRAMES+" frames";
   if(samples.length<STABLE_FRAMES){measurementState.textContent="Estabilizando";measurementState.className="pill";stabilityState.textContent=Math.round(samples.length/STABLE_FRAMES*100)+"%";readingNote.textContent="Mantenha o rosto imóvel";useReadingBtn.disabled=true;return}
@@ -421,7 +425,7 @@ function resetSamples(){
 async function start(){
   if(!initFaceMesh())return;
   intro.classList.add("hidden");workspace.classList.remove("hidden","measurement-mode");calibrationPanel.classList.remove("hidden");cameraControls.classList.remove("hidden");measurementRuler.classList.add("hidden");savedPanel.classList.add("hidden");settingsPanel.classList.add("hidden");
-  try{await openCamera();running=true;processFrame();calibrationOverlay.classList.remove("hidden");measurementPanel.classList.add("hidden");setStep(2);calibration=null;nasalPoint={x:0,y:0};nasalConfirmed=false;nasalHandle.classList.add("hidden");calibrationState.textContent="Não calibrado";calibrationState.className="pill amber";calibrationValidation.textContent="Faça a calibração física desta sessão antes de medir.";calibrationValidation.className="validation warn";scaleValue.textContent="—";resetCalibrationHandles()}
+  try{localStorage.removeItem("mbDnpCalibration");localStorage.removeItem("mbDnpCalibrationLabel");await openCamera();running=true;processFrame();calibrationOverlay.classList.remove("hidden");measurementPanel.classList.add("hidden");setStep(2);calibration=null;nasalPoint={x:0,y:0};nasalConfirmed=false;nasalHandle.classList.add("hidden");calibrationState.textContent="Não calibrado";calibrationState.className="pill amber";calibrationValidation.textContent="Faça a calibração física desta sessão antes de medir.";calibrationValidation.className="validation warn";scaleValue.textContent="—";resetCalibrationHandles()}
   catch(e){console.error(e);alert("Permita o acesso à câmera no navegador e tente novamente.");resetApp()}
 }
 function resetApp(){running=false;stopCamera();workspace.classList.add("hidden");intro.classList.remove("hidden");calibrationOverlay.classList.add("hidden");measurementPanel.classList.add("hidden");osPanel.classList.add("hidden");savedPanel.classList.add("hidden");setStep(1);statusDot.classList.remove("active");calibration=null;resetSamples()}
@@ -439,7 +443,7 @@ function collectRecord(){
   const reading=selectedReading||stableReading;if(!reading)return null;const name=customerName.value.trim();
   if(!name){osValidation.textContent="Informe o nome do cliente para gerar a O.S.";osValidation.className="validation error";customerName.focus();return null}
   const number=currentOs?.number||nextOsNumber();currentOs={number};
-  return{schema:"MB.Optica.DNP.OS.v2",number,createdAt:new Date().toISOString(),customer:{name,phone:customerPhone.value.trim(),cpf:customerCpf.value.trim(),type:customerType.value,notes:customerNotes.value.trim()},sale:{number:saleNumber.value.trim()},measurement:{odMm:reading.odMm,oeMm:reading.oeMm,dnpMm:reading.dnpMm,stabilitySdMm:reading.sdMm,nasalReferenceMm:0,referenceType:"ponte-da-armacao"},calibration:reading.calibration,source:"MB.Óptica DNP",integrationStatus:"pending"}
+  return{schema:"MB.Optica.DNP.OS.v2",number,createdAt:new Date().toISOString(),customer:{name,phone:customerPhone.value.trim(),cpf:customerCpf.value.trim(),type:customerType.value,notes:customerNotes.value.trim()},sale:{number:saleNumber.value.trim()},measurement:{odMm:reading.odMm,oeMm:reading.oeMm,dnpMm:reading.dnpMm,stabilitySdMm:reading.sdMm,nasalReferenceMm:0,referenceType:"ponte-da-armacao"},calibration:reading.calibration,measurementMethod:"biometria-facial+cartao-fisico",referenceStandard:"ID-1 85.60x53.98 mm",source:"MB.Óptica DNP",integrationStatus:"pending"}
 }
 function saveRecord(){
   const record=collectRecord();if(!record)return;const list=JSON.parse(localStorage.getItem("mbDnpOrders")||"[]"),existing=list.findIndex(x=>x.number===record.number);if(existing>=0)list[existing]=record;else list.unshift(record);
