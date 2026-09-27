@@ -253,9 +253,18 @@ function onResults(res){
   else{measurementState.textContent="Ajuste a cabeça";readingNote.textContent="Mantenha os olhos no mesmo nível"}
 }
 
-const faceMesh=new FaceMesh({locateFile:file=>"https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/"+file});
-faceMesh.setOptions({maxNumFaces:1,refineLandmarks:true,minDetectionConfidence:.6,minTrackingConfidence:.6});
-faceMesh.onResults(onResults);
+let faceMesh=null;
+function initFaceMesh(){
+  if(faceMesh)return true;
+  if(typeof FaceMesh!=="function"){
+    alert("O módulo de visão não foi carregado. Verifique a conexão com a internet e recarregue a página.");
+    return false;
+  }
+  faceMesh=new FaceMesh({locateFile:file=>"https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/"+file});
+  faceMesh.setOptions({maxNumFaces:1,refineLandmarks:true,minDetectionConfidence:.6,minTrackingConfidence:.6});
+  faceMesh.onResults(onResults);
+  return true
+}
 
 async function openCamera(){
   stopCamera();const constraints={audio:false,video:{facingMode:{ideal:cameraFacing},width:{ideal:1280},height:{ideal:720}}};
@@ -281,6 +290,7 @@ function resetSamples(){
   stabilityState.textContent="—";faceState.textContent="—";alignmentState.textContent="—";measurementState.textContent=calibration?"Aguardando":"Aguardando";measurementState.className="pill";useReadingBtn.disabled=true
 }
 async function start(){
+  if(!initFaceMesh())return;
   intro.classList.add("hidden");workspace.classList.remove("hidden","measurement-mode");calibrationPanel.classList.remove("hidden");cameraControls.classList.remove("hidden");measurementRuler.classList.add("hidden");savedPanel.classList.add("hidden");settingsPanel.classList.add("hidden");
   try{await openCamera();running=true;processFrame();calibrationOverlay.classList.remove("hidden");measurementPanel.classList.add("hidden");setStep(2);calibration=null;nasalPoint={x:0,y:0};nasalConfirmed=false;nasalHandle.classList.add("hidden");calibrationState.textContent="Não calibrado";calibrationState.className="pill amber";calibrationValidation.textContent="Faça a calibração física desta sessão antes de medir.";calibrationValidation.className="validation warn";scaleValue.textContent="—";resetCalibrationHandles()}
   catch(e){console.error(e);alert("Permita o acesso à câmera no navegador e tente novamente.");resetApp()}
