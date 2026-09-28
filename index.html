@@ -41,6 +41,10 @@
     <canvas id="overlay"></canvas>
     <div class="face-guide"><span>POSICIONE O ROSTO</span><small>olhe para a câmera • cabeça reta</small></div>
     <div id="captureBadge" class="capture-badge">AGUARDANDO MOTOR</div>
+    <div id="viewerActions" class="viewer-actions">
+      <div class="viewer-reading"><span>DNP</span><strong id="viewerDnp">—</strong></div>
+      <button id="viewerOsBtn" class="viewer-os-btn" type="button" disabled>Gerar O.S. DNP</button>
+    </div>
   </div>
 
   <section class="card camera-panel">
@@ -78,7 +82,7 @@
   </section>
 
   <section id="osPanel" class="card os-panel hidden">
-    <div class="section-title-row"><div><div class="eyebrow">ORDEM DE SERVIÇO</div><h2>Cliente</h2></div><span class="pill green">Local</span></div>
+    <div class="section-title-row"><div><div class="eyebrow">ORDEM DE SERVIÇO</div><h2>Cliente</h2></div><div class="os-header-actions"><span class="pill green">Local</span><button id="osCloseBtn" class="os-close" type="button" aria-label="Fechar O.S.">×</button></div></div>
     <p class="helper">A medição fica vinculada a uma O.S. local. A integração com o MB Gestão Inteligente será feita depois, sem alterar este fluxo de captura.</p>
     <div class="form-grid">
       <label class="full"><span>Cliente *</span><input id="customerName" autocomplete="name" placeholder="Nome completo"></label>
