@@ -2,7 +2,7 @@ window.__MB_DNP_V33__=true;
 const $=id=>document.getElementById(id);
 const el={
   intro:$('intro'),workspace:$('workspace'),start:$('startBtn'),startError:$('startError'),statusDot:$('statusDot'),settings:$('settingsBtn'),
-  viewer:$('viewer'),video:$('video'),canvas:$('overlay'),capture:$('captureBadge'),cameraStatus:$('cameraStatus'),cameraQuality:$('cameraQuality'),front:$('frontBtn'),rear:$('rearBtn'),
+  viewer:$('viewer'),video:$('video'),canvas:$('overlay'),capture:$('captureBadge'),viewerDnp:$('viewerDnp'),viewerOsBtn:$('viewerOsBtn'),osClose:$('osCloseBtn'),cameraStatus:$('cameraStatus'),cameraQuality:$('cameraQuality'),front:$('frontBtn'),rear:$('rearBtn'),
   faceState:$('faceState'),faceMetric:$('faceMetric'),poseMetric:$('poseMetric'),scaleMetric:$('scaleMetric'),stabilityMetric:$('stabilityMetric'),rightMetric:$('rightMetric'),noseMetric:$('noseMetric'),leftMetric:$('leftMetric'),biometricNote:$('biometricNote'),
   measurementState:$('measurementState'),od:$('od'),oe:$('oe'),dnp:$('dnp'),readingCount:$('readingCount'),readingNote:$('readingNote'),zeroMetric:$('zeroMetric'),newReading:$('newReadingBtn'),useReading:$('useReadingBtn'),
   osPanel:$('osPanel'),name:$('customerName'),phone:$('customerPhone'),cpf:$('customerCpf'),sale:$('saleNumber'),type:$('customerType'),notes:$('customerNotes'),osNumber:$('osNumber'),osDnp:$('osDnp'),osMono:$('osMono'),osValidation:$('osValidation'),saveDraft:$('saveDraftBtn'),generate:$('generateOsBtn'),
@@ -15,7 +15,7 @@ const CFG={
   odIrisEdges:[474,475,476,477],oeIrisEdges:[469,470,471,472],irisMm:11.7,canonicalEyeMm:88.91718,
   storeKey:'mb_dnp_facial_biometric_v33'
 };
-const state={engine:null,stream:null,running:false,busy:false,raf:0,lastDetectAt:0,timestamp:0,facing:'user',samples:[],reading:null,os:null,errorCount:0};
+const state={engine:null,stream:null,running:false,busy:false,raf:0,lastDetectAt:0,timestamp:0,facing:'user',samples:[],reading:null,readingLocked:false,os:null,errorCount:0};
 
 function setStep(n){document.querySelectorAll('.step').forEach((node,i)=>{node.classList.toggle('active',i===n-1);node.classList.toggle('done',i<n-1)})}
 function setPill(node,text,tone=''){node.textContent=text;node.className='pill'+(tone?' '+tone:'')}
@@ -69,7 +69,7 @@ function draw(lm,g){
   [[g.r,'#55d6ff'],[g.l,'#55d6ff'],[g.n,'#ffcc66']].forEach(([p,color])=>{ctx.beginPath();ctx.arc(p.x,p.y,5,0,Math.PI*2);ctx.fillStyle=color;ctx.fill()});
 }
 function resetMeasurement(){
-  state.samples=[];state.reading=null;el.useReading.disabled=true;
+  state.samples=[];state.reading=null;state.readingLocked=false;el.useReading.disabled=true;el.viewerDnp.textContent='—';el.viewerOsBtn.disabled=true;el.viewerOsBtn.textContent='Gerar O.S. DNP';
   el.od.textContent='—';el.oe.textContent='—';el.dnp.textContent='—';el.zeroMetric.textContent='—';
   el.readingCount.textContent='0/'+CFG.stableFrames+' quadros';el.readingNote.textContent='Aguardando captura';
   setPill(el.measurementState,'Aguardando');setPill(el.stabilityMetric,'—');el.biometricNote.textContent='Aguardando o rosto.';
@@ -80,6 +80,7 @@ function updateBiometric(g){
   setPill(el.faceState,'Mapeado','green');setPill(el.poseMetric,poseOk?'Frontal':'Ajustar',poseOk?'green':'amber');
   el.scaleMetric.textContent=g.mmPerPx.toFixed(3)+' mm/px';
   el.rightMetric.textContent=g.r.x.toFixed(0)+', '+g.r.y.toFixed(0);el.leftMetric.textContent=g.l.x.toFixed(0)+', '+g.l.y.toFixed(0);el.noseMetric.textContent=g.n.x.toFixed(0)+', '+g.n.y.toFixed(0);
+  if(state.readingLocked&&state.reading){return;}
   if(g.valid){state.samples.push(g);if(state.samples.length>CFG.stableFrames)state.samples.shift();el.biometricNote.textContent='Face, íris e pose válidos • acumulando sequência estável.'}
   else{el.biometricNote.textContent='Rosto detectado • ajuste posição/pose para validar a medição.'}
   el.readingCount.textContent=state.samples.length+'/'+CFG.stableFrames+' quadros';
@@ -87,7 +88,7 @@ function updateBiometric(g){
   if(state.samples.length===CFG.stableFrames){
     const od=median(state.samples.map(x=>x.od)),oe=median(state.samples.map(x=>x.oe)),dnp=od+oe,spread=Math.max(deviation(state.samples.map(x=>x.od)),deviation(state.samples.map(x=>x.oe)),deviation(state.samples.map(x=>x.dnp)));
     state.reading={od,oe,dnp,spread,frames:CFG.stableFrames,scale:median(state.samples.map(x=>x.mmPerPx)),roll:median(state.samples.map(x=>x.roll)),yaw:median(state.samples.map(x=>x.yawDeg)),method:'facial-landmarker+iris-eye-scale'};
-    el.od.textContent=od.toFixed(1)+' mm';el.oe.textContent=oe.toFixed(1)+' mm';el.dnp.textContent=dnp.toFixed(1)+' mm';el.zeroMetric.textContent='168 • automático';el.readingNote.textContent=spread<=.35?'24 quadros • variação baixa':'24 quadros • variação aceitável';setPill(el.stabilityMetric,spread<=.35?'Excelente':'Boa','green');setPill(el.measurementState,'Leitura pronta','green');el.useReading.disabled=false;
+    el.od.textContent=od.toFixed(1)+' mm';el.oe.textContent=oe.toFixed(1)+' mm';el.dnp.textContent=dnp.toFixed(1)+' mm';el.viewerDnp.textContent=dnp.toFixed(1)+' mm';el.viewerOsBtn.disabled=false;el.zeroMetric.textContent='168 • automático';el.readingNote.textContent=spread<=.35?'24 quadros • variação baixa':'24 quadros • variação aceitável';setPill(el.stabilityMetric,spread<=.35?'Excelente':'Boa','green');setPill(el.measurementState,'Leitura pronta','green');el.useReading.disabled=false;
   }
 }
 
@@ -164,7 +165,11 @@ function validateCustomer(){if(!el.name.value.trim()){el.osValidation.textConten
 el.start.addEventListener('click',start);
 el.front.addEventListener('click',()=>switchCamera('user'));el.rear.addEventListener('click',()=>switchCamera('environment'));window.addEventListener('resize',resize);
 el.newReading.addEventListener('click',()=>{resetMeasurement();setStep(3);el.biometricNote.textContent='Nova sequência facial iniciada.'});
-el.useReading.addEventListener('click',()=>{if(!state.reading)return;el.osPanel.classList.remove('hidden');el.osDnp.textContent=state.reading.dnp.toFixed(1)+' mm';el.osMono.textContent=state.reading.od.toFixed(1)+' / '+state.reading.oe.toFixed(1)+' mm';el.osNumber.textContent='Será gerada';setStep(4);el.osPanel.scrollIntoView({behavior:'smooth',block:'start'})});
+function openOsPanel(){if(!state.reading)return;state.readingLocked=true;el.viewerDnp.textContent=state.reading.dnp.toFixed(1)+' mm';el.viewerOsBtn.textContent='DNP bloqueada • O.S.';el.osPanel.classList.remove('hidden');el.osPanel.classList.add('floating-os');document.body.classList.add('os-open');el.osDnp.textContent=state.reading.dnp.toFixed(1)+' mm';el.osMono.textContent=state.reading.od.toFixed(1)+' / '+state.reading.oe.toFixed(1)+' mm';el.osNumber.textContent='Será gerada';setStep(4)}
+function closeOsPanel(){el.osPanel.classList.add('hidden');el.osPanel.classList.remove('floating-os');document.body.classList.remove('os-open')}
+el.useReading.addEventListener('click',openOsPanel);
+el.viewerOsBtn.addEventListener('click',openOsPanel);
+el.osClose.addEventListener('click',closeOsPanel);
 el.saveDraft.addEventListener('click',()=>{if(!validateCustomer())return;const os=persistOS('rascunho');el.osNumber.textContent=os.number;el.osValidation.textContent='Rascunho salvo neste dispositivo: '+os.number;el.osValidation.className='validation ok';el.osValidation.classList.remove('hidden')});
 el.generate.addEventListener('click',()=>{if(!validateCustomer())return;const os=persistOS('gerada');el.osNumber.textContent=os.number;el.savedTitle.textContent='O.S. '+os.number;el.savedSummary.textContent=os.customer.name+' • DNP '+os.measurement.dnpMm.toFixed(1)+' mm • OD '+os.measurement.odMm.toFixed(1)+' mm • OE '+os.measurement.oeMm.toFixed(1)+' mm.';el.osPanel.classList.add('hidden');el.saved.classList.remove('hidden');el.saved.scrollIntoView({behavior:'smooth',block:'start'});setStep(4)});
 el.print.addEventListener('click',()=>{if(!state.os)return;const os=state.os,m=os.measurement,c=os.customer,w=window.open('','_blank','width=800,height=700');if(!w)return;w.document.write('<!doctype html><html><head><title>'+escapeHtml(os.number)+'</title><style>body{font-family:Arial;padding:32px;color:#111}.box{border:1px solid #aaa;padding:16px;margin:12px 0}.big{font-size:28px;font-weight:800}</style></head><body><h1>MB.Óptica — O.S.</h1><div>'+escapeHtml(os.number)+'</div><div class="box"><b>Cliente</b><br>'+escapeHtml(c.name)+'<br>'+escapeHtml(c.phone)+' '+escapeHtml(c.cpf)+'</div><div class="box"><b>Leitura facial</b><div class="big">DNP '+m.dnpMm.toFixed(1)+' mm</div>OD '+m.odMm.toFixed(1)+' mm • OE '+m.oeMm.toFixed(1)+' mm</div><div class="box">Método: Face Landmarker + escala combinada de íris/face • '+m.frames+' quadros • referência nasal automática (landmark '+m.nasalLandmark+')</div></body></html>');w.document.close();w.focus();w.print()});
