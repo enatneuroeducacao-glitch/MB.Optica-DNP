@@ -137,7 +137,7 @@ function detectLoop(now){
 }
 function resetLiveMeasurementState(){
   if(state.samples.length===0)return;
-  state.samples=[];state.reading=null;el.useReading.disabled=true;el.readingCount.textContent='0/'+CFG.stableFrames+' quadros';el.od.textContent='—';el.oe.textContent='—';el.dnp.textContent='—';setPill(el.measurementState,'Aguardando');setPill(el.stabilityMetric,'—');
+  state.samples=[];state.reading=null;el.useReading.disabled=true;el.viewerDnp.textContent='—';el.viewerOsBtn.disabled=true;el.viewerOsBtn.textContent='Gerar O.S. DNP';el.readingCount.textContent='0/'+CFG.stableFrames+' quadros';el.od.textContent='—';el.oe.textContent='—';el.dnp.textContent='—';setPill(el.measurementState,'Aguardando');setPill(el.stabilityMetric,'—');
 }
 
 async function start(){
