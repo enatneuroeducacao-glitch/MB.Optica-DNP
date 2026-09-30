@@ -1,4 +1,4 @@
-window.__MB_DNP_V35__=true;
+window.__MB_DNP_V36__=true;
 const $=id=>document.getElementById(id);
 const el={
   intro:$('intro'),workspace:$('workspace'),start:$('startBtn'),startError:$('startError'),statusDot:$('statusDot'),settings:$('settingsBtn'),
@@ -10,12 +10,12 @@ const el={
 };
 const ctx=el.canvas.getContext('2d');
 const CFG={
-  version:'35',stableFrames:24,detectEveryMs:110,
+  version:'36',stableFrames:24,detectEveryMs:110,
   odIris:473,oeIris:468,nasal:168,odOuter:263,oeOuter:33,faceLeft:234,faceRight:454,faceTop:10,faceBottom:152,
   odIrisEdges:[474,475,476,477],oeIrisEdges:[469,470,471,472],irisMm:11.7,canonicalEyeMm:88.91718,
-  storeKey:'mb_dnp_facial_biometric_v35'
+  storeKey:'mb_dnp_facial_biometric_v36'
 };
-const state={engine:null,stream:null,running:false,busy:false,raf:0,lastDetectAt:0,timestamp:0,facing:'user',samples:[],reading:null,readingLocked:false,os:null,errorCount:0};
+const state={engine:null,stream:null,running:false,busy:false,raf:0,lastDetectAt:0,timestamp:0,facing:'user',samples:[],reading:null,readingLocked:false,os:null,errorCount:0,pupilTrack:null};
 
 function setStep(n){document.querySelectorAll('.step').forEach((node,i)=>{node.classList.toggle('active',i===n-1);node.classList.toggle('done',i<n-1)})}
 function setPill(node,text,tone=''){node.textContent=text;node.className='pill'+(tone?' '+tone:'')}
@@ -35,8 +35,24 @@ function irisDiameter(lm,centerIndex,edgeIndexes){
   const radii=edgeIndexes.map(i=>{const p=screenPoint(lm[i]);return p?distance(center,p):null}).filter(Number.isFinite);
   return radii.length===4?2*radii.reduce((a,b)=>a+b,0)/4:null;
 }
-function anatomy(lm){
-  const r=screenPoint(lm[CFG.odIris]),l=screenPoint(lm[CFG.oeIris]),n=screenPoint(lm[CFG.nasal]),ro=screenPoint(lm[CFG.odOuter]),lo=screenPoint(lm[CFG.oeOuter]);
+function fixedNasalPoint(){
+  const s=view();
+  return{x:s.w*.5,y:s.h*.48};
+}
+function smoothPoint(previous,current,alpha=.62){
+  if(!previous)return{x:current.x,y:current.y};
+  return{x:previous.x+(current.x-previous.x)*alpha,y:previous.y+(current.y-previous.y)*alpha};
+}
+function trackPupils(g){
+  state.pupilTrack={
+    r:smoothPoint(state.pupilTrack?.r,g.r,.62),
+    l:smoothPoint(state.pupilTrack?.l,g.l,.62)
+  };
+  return state.pupilTrack;
+}
+function anatomy(lm,tracked=null){
+  const rawR=screenPoint(lm[CFG.odIris]),rawL=screenPoint(lm[CFG.oeIris]),n=screenPoint(lm[CFG.nasal]),ro=screenPoint(lm[CFG.odOuter]),lo=screenPoint(lm[CFG.oeOuter]);
+  const r=tracked?.r||rawR,l=tracked?.l||rawL;
   const fl=screenPoint(lm[CFG.faceLeft]),fr=screenPoint(lm[CFG.faceRight]),ft=screenPoint(lm[CFG.faceTop]),fb=screenPoint(lm[CFG.faceBottom]);
   if([r,l,n,ro,lo,fl,fr,ft,fb].some(p=>!p))return null;
   const axis={x:l.x-r.x,y:l.y-r.y},len=Math.hypot(axis.x,axis.y)||1,u={x:axis.x/len,y:axis.y/len};
@@ -56,8 +72,12 @@ function anatomy(lm){
   const pr=project(r),pl=project(l),pn=project(n);
   const od=Math.abs(pn-pr)*mmPerPx*correction,oe=Math.abs(pl-pn)*mmPerPx*correction;
   const dnp=od+oe;
-  const valid=roll<=10&&Math.abs(yawDeg)<=18&&od>=15&&od<=45&&oe>=15&&oe<=45&&dnp>=45&&dnp<=90;
-  return{r,l,n,ro,lo,fl,fr,ft,fb,eyeOuter,irisR,irisL,irisPx,mmPerPx,roll,yawDeg,od,oe,dnp,valid};
+  const anchor=fixedNasalPoint();
+  const anchorDistance=distance(n,anchor);
+  const anchorTolerance=Math.max(42,distance(fl,fr)*.15);
+  const aligned=anchorDistance<=anchorTolerance;
+  const valid=roll<=10&&Math.abs(yawDeg)<=18&&od>=15&&od<=45&&oe>=15&&oe<=45&&dnp>=45&&dnp<=90&&aligned;
+  return{r,l,n,anchor,anchorDistance,anchorTolerance,aligned,ro,lo,fl,fr,ft,fb,eyeOuter,irisR,irisL,irisPx,mmPerPx,roll,yawDeg,od,oe,dnp,valid};
 }
 
 function draw(lm,g){
@@ -65,11 +85,14 @@ function draw(lm,g){
   for(let i=0;i<lm.length;i+=5){const p=screenPoint(lm[i]);if(p){ctx.beginPath();ctx.arc(p.x,p.y,1.1,0,Math.PI*2);ctx.fillStyle='rgba(102,211,255,.34)';ctx.fill()}}
   const outline=[10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,400,377,152,234,93,132,58,172,136,150,149,176,148,10];
   for(let i=0;i<outline.length-1;i++){const a=screenPoint(lm[outline[i]]),b=screenPoint(lm[outline[i+1]]);if(a&&b){ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.strokeStyle='rgba(122,222,255,.46)';ctx.lineWidth=1;ctx.stroke()}}
-  [[g.r,g.l,'rgba(255,255,255,.6)'],[g.n,g.r,'rgba(255,204,102,.85)'],[g.n,g.l,'rgba(255,204,102,.85)']].forEach(([a,b,color])=>{ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.strokeStyle=color;ctx.lineWidth=1.5;ctx.stroke()});
-  [[g.r,'#55d6ff'],[g.l,'#55d6ff'],[g.n,'#ffcc66']].forEach(([p,color])=>{ctx.beginPath();ctx.arc(p.x,p.y,5,0,Math.PI*2);ctx.fillStyle=color;ctx.fill()});
+  const anchor=g.anchor||fixedNasalPoint();
+  [[g.r,g.l,'rgba(255,255,255,.6)'],[anchor,g.r,'rgba(255,204,102,.85)'],[anchor,g.l,'rgba(255,204,102,.85)']].forEach(([a,b,color])=>{ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.strokeStyle=color;ctx.lineWidth=1.5;ctx.stroke()});
+  ctx.beginPath();ctx.arc(anchor.x,anchor.y,7,0,Math.PI*2);ctx.strokeStyle='rgba(255,204,102,.95)';ctx.lineWidth=2;ctx.stroke();
+  ctx.beginPath();ctx.moveTo(anchor.x-10,anchor.y);ctx.lineTo(anchor.x+10,anchor.y);ctx.moveTo(anchor.x,anchor.y-10);ctx.lineTo(anchor.x,anchor.y+10);ctx.strokeStyle='rgba(255,204,102,.72)';ctx.lineWidth=1;ctx.stroke();
+  [[g.r,'#55d6ff'],[g.l,'#55d6ff']].forEach(([p,color])=>{ctx.beginPath();ctx.arc(p.x,p.y,6,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();ctx.beginPath();ctx.arc(p.x,p.y,9,0,Math.PI*2);ctx.strokeStyle='rgba(85,214,255,.35)';ctx.lineWidth=1.5;ctx.stroke()});
 }
 function resetMeasurement(){
-  state.samples=[];state.reading=null;state.readingLocked=false;el.useReading.disabled=true;el.viewerDnp.textContent='—';el.viewerOsBtn.disabled=true;el.viewerOsBtn.textContent='Gerar O.S. DNP';
+  state.samples=[];state.reading=null;state.readingLocked=false;state.pupilTrack=null;el.useReading.disabled=true;el.viewerDnp.textContent='—';el.viewerOsBtn.disabled=true;el.viewerOsBtn.textContent='Gerar O.S. DNP';
   el.od.textContent='—';el.oe.textContent='—';el.dnp.textContent='—';el.zeroMetric.textContent='—';
   el.readingCount.textContent='0/'+CFG.stableFrames+' quadros';el.readingNote.textContent='Aguardando captura';
   setPill(el.measurementState,'Aguardando');setPill(el.stabilityMetric,'—');el.biometricNote.textContent='Aguardando o rosto.';
@@ -82,7 +105,7 @@ function updateBiometric(g){
   el.rightMetric.textContent=g.r.x.toFixed(0)+', '+g.r.y.toFixed(0);el.leftMetric.textContent=g.l.x.toFixed(0)+', '+g.l.y.toFixed(0);el.noseMetric.textContent=g.n.x.toFixed(0)+', '+g.n.y.toFixed(0);
   if(state.readingLocked&&state.reading){return;}
   if(g.valid){state.samples.push(g);if(state.samples.length>CFG.stableFrames)state.samples.shift();el.biometricNote.textContent='Face, íris e pose válidos • acumulando sequência estável.'}
-  else{el.biometricNote.textContent='Rosto detectado • ajuste posição/pose para validar a medição.'}
+  else{el.biometricNote.textContent=g.aligned?'Rosto detectado • ajuste posição/pose para validar a medição.':'Aproxime a ponte nasal do marcador fixo para alinhar o rosto.'}
   el.readingCount.textContent=state.samples.length+'/'+CFG.stableFrames+' quadros';
   if(state.samples.length<CFG.stableFrames){setPill(el.stabilityMetric,'Capturando');setPill(el.measurementState,'Capturando')}
   if(state.samples.length===CFG.stableFrames){
@@ -126,11 +149,13 @@ function detectLoop(now){
     const result=state.engine.detectForVideo(el.video,state.timestamp);
     const lm=result?.faceLandmarks?.[0];
     if(!lm){
+      state.pupilTrack=null;
       ctx.clearRect(0,0,view().w,view().h);setPill(el.faceState,'Sem rosto','amber');setPill(el.cameraQuality,'Sem rosto','amber');el.capture.textContent='APROXIME O ROSTO';el.cameraStatus.textContent='Câmera ativa • procurando rosto';el.biometricNote.textContent='Nenhum rosto válido no enquadramento.';resetLiveMeasurementState();return;
     }
-    const g=anatomy(lm);
-    if(!g){setPill(el.faceState,'Analisando','amber');el.capture.textContent='ANALISANDO ROSTO';el.cameraStatus.textContent='Câmera ativa • refinando olhos e íris';return}
-    draw(lm,g);updateBiometric(g);setPill(el.cameraQuality,g.valid?'Boa captura':'Ajustar',g.valid?'green':'amber');el.capture.textContent=g.valid?'ROSTO MAPEADO':'AJUSTE DE POSE';el.cameraStatus.textContent=g.valid?'Câmera ativa • leitura facial válida':'Câmera ativa • ajuste o rosto';state.errorCount=0;
+    const raw=anatomy(lm);
+    if(!raw){setPill(el.faceState,'Analisando','amber');el.capture.textContent='ANALISANDO ROSTO';el.cameraStatus.textContent='Câmera ativa • refinando olhos e íris';return}
+    const g=anatomy(lm,trackPupils(raw));
+    draw(lm,g);updateBiometric(g);setPill(el.cameraQuality,g.valid?'Boa captura':'Ajustar',g.valid?'green':'amber');el.capture.textContent=g.valid?'ROSTO MAPEADO':(g.aligned?'AJUSTE DE POSE':'ALINHE A PONTE');el.cameraStatus.textContent=g.valid?'Câmera ativa • leitura facial válida':(g.aligned?'Câmera ativa • ajuste o rosto':'Centralize a ponte nasal no marcador fixo');state.errorCount=0;
   }catch(error){
     state.errorCount++;console.error('MB DNP detection:',error);setPill(el.cameraQuality,'Erro facial','amber');el.capture.textContent='ERRO MOMENTÂNEO';el.cameraStatus.textContent='Motor facial tentando novamente';if(state.errorCount>=5)el.biometricNote.textContent='O motor facial encontrou erros repetidos. Reinicie a leitura se persistir.';
   }finally{state.busy=false}
@@ -177,6 +202,6 @@ el.generate.addEventListener('click',async()=>{if(!validateCustomer())return;con
 el.pdf.addEventListener('click',async()=>{if(!state.os)return;el.pdf.disabled=true;el.pdf.textContent='Gerando PDF…';try{await generatePdf(state.os);el.pdf.textContent='PDF gerado';}catch(error){console.error('MB DNP PDF:',error);el.pdf.textContent='Falha ao gerar PDF';}finally{setTimeout(()=>{el.pdf.disabled=false;el.pdf.textContent='Gerar PDF novamente'},1400)}});
 el.print.addEventListener('click',()=>{if(!state.os)return;const os=state.os,m=os.measurement,c=os.customer,w=window.open('','_blank','width=800,height=700');if(!w)return;w.document.write('<!doctype html><html><head><title>'+escapeHtml(os.number)+'</title><style>body{font-family:Arial;padding:32px;color:#111}.box{border:1px solid #aaa;padding:16px;margin:12px 0}.big{font-size:28px;font-weight:800}</style></head><body><h1>MB.Óptica — O.S.</h1><div>'+escapeHtml(os.number)+'</div><div class="box"><b>Cliente</b><br>'+escapeHtml(c.name)+'<br>'+escapeHtml(c.phone)+' '+escapeHtml(c.cpf)+'</div><div class="box"><b>Leitura facial</b><div class="big">DNP '+m.dnpMm.toFixed(1)+' mm</div>OD '+m.odMm.toFixed(1)+' mm • OE '+m.oeMm.toFixed(1)+' mm</div><div class="box">Método: Face Landmarker + escala combinada de íris/face • '+m.frames+' quadros • referência nasal automática (landmark '+m.nasalLandmark+')</div></body></html>');w.document.close();w.focus();w.print()});
 el.another.addEventListener('click',()=>{stopCamera();location.reload()});
-el.settings.addEventListener('click',()=>alert('MB DNP v33\n\nLeitura facial local com MediaPipe Face Landmarker.\nNenhuma imagem do rosto é salva pelo aplicativo.\nOs dados da O.S. ficam no armazenamento local deste dispositivo.\n\nA medição deve ser validada contra instrumento de referência antes do uso profissional.'));
+el.settings.addEventListener('click',()=>alert('MB DNP v36\n\nLeitura facial local com MediaPipe Face Landmarker.\nNenhuma imagem do rosto é salva pelo aplicativo.\nOs dados da O.S. ficam no armazenamento local deste dispositivo.\n\nA medição deve ser validada contra instrumento de referência antes do uso profissional.'));
 window.addEventListener('beforeunload',stopCamera);
 resize();
