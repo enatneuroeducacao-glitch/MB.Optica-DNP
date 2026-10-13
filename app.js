@@ -1,4 +1,4 @@
-window.__MB_DNP_V37__=true;
+window.__MB_DNP_V38__=true;
 const $=id=>document.getElementById(id);
 const el={
   intro:$('intro'),workspace:$('workspace'),start:$('startBtn'),startError:$('startError'),statusDot:$('statusDot'),settings:$('settingsBtn'),
@@ -10,10 +10,10 @@ const el={
 };
 const ctx=el.canvas.getContext('2d');
 const CFG={
-  version:'37',stableFrames:24,detectEveryMs:110,
+  version:'38',stableFrames:24,detectEveryMs:110,
   odIris:473,oeIris:468,nasal:168,odOuter:263,oeOuter:33,faceLeft:234,faceRight:454,faceTop:10,faceBottom:152,
-  odIrisEdges:[474,475,476,477],oeIrisEdges:[469,470,471,472],irisMm:11.7,canonicalEyeMm:88.91718,
-  storeKey:'mb_dnp_facial_biometric_v37'
+  odIrisEdges:[474,475,476,477],oeIrisEdges:[469,470,471,472],irisMm:11.7,
+  storeKey:'mb_dnp_facial_biometric_v38',legacyStoreKey:'mb_dnp_facial_biometric_v37'
 };
 const state={engine:null,stream:null,running:false,busy:false,raf:0,lastDetectAt:0,timestamp:0,facing:'user',samples:[],reading:null,readingLocked:false,os:null,errorCount:0,pupilTrack:null};
 
@@ -48,36 +48,29 @@ function trackPupils(g){
     r:smoothPoint(state.pupilTrack?.r,g.r,.62),
     l:smoothPoint(state.pupilTrack?.l,g.l,.62)
   };
-  return state.pupilTrack;
-}
-function anatomy(lm,tracked=null){
+  returnfunction anatomy(lm,tracked=null){
   const rawR=screenPoint(lm[CFG.odIris]),rawL=screenPoint(lm[CFG.oeIris]),n=screenPoint(lm[CFG.nasal]),ro=screenPoint(lm[CFG.odOuter]),lo=screenPoint(lm[CFG.oeOuter]);
   const r=tracked?.r||rawR,l=tracked?.l||rawL;
   const fl=screenPoint(lm[CFG.faceLeft]),fr=screenPoint(lm[CFG.faceRight]),ft=screenPoint(lm[CFG.faceTop]),fb=screenPoint(lm[CFG.faceBottom]);
   if([r,l,n,ro,lo,fl,fr,ft,fb].some(p=>!p))return null;
-  const axis={x:l.x-r.x,y:l.y-r.y},len=Math.hypot(axis.x,axis.y)||1,u={x:axis.x/len,y:axis.y/len};
-  const midpoint={x:(r.x+l.x)/2,y:(r.y+l.y)/2};
-  const eyeOuter=distance(ro,lo);
+  const axis={x:l.x-r.x,y:l.y-r.y},len=Math.hypot(axis.x,axis.y);
+  if(!Number.isFinite(len)||len<1)return null;
+  const u={x:axis.x/len,y:axis.y/len},midpoint={x:(r.x+l.x)/2,y:(r.y+l.y)/2},eyeOuter=distance(ro,lo);
   const irisR=irisDiameter(lm,CFG.odIris,CFG.odIrisEdges),irisL=irisDiameter(lm,CFG.oeIris,CFG.oeIrisEdges);
   if(!Number.isFinite(irisR)||!Number.isFinite(irisL)||irisR<4||irisL<4||eyeOuter<40)return null;
-  const irisPx=(irisR+irisL)/2;
-  const irisScale=CFG.irisMm/irisPx;
-  const faceScale=CFG.canonicalEyeMm/eyeOuter;
-  const mmPerPx=irisScale*.65+faceScale*.35;
+  // Landmark 168 is the geometric origin; the screen-center marker is only a visual guide.
+  const irisPx=(irisR+irisL)/2,mmPerPx=CFG.irisMm/irisPx;
   const roll=Math.atan2(axis.y,Math.abs(axis.x))*180/Math.PI;
   const noseOffset=((n.x-midpoint.x)*u.x+(n.y-midpoint.y)*u.y)/(eyeOuter/2);
   const yawDeg=Math.asin(clamp(noseOffset,-.85,.85))*180/Math.PI;
   const correction=1/Math.max(.82,Math.cos(yawDeg*Math.PI/180));
-  const anchor=fixedNasalPoint();
-  const project=(p,origin=anchor)=>(p.x-origin.x)*u.x+(p.y-origin.y)*u.y;
-  const pa=project(anchor),pr=project(r),pl=project(l);
-  const od=Math.abs(pr-pa)*mmPerPx*correction,oe=Math.abs(pl-pa)*mmPerPx*correction;
-  const dnp=od+oe;
-  const anchorDistance=distance(n,anchor);
-  const anchorTolerance=Math.max(30,distance(fl,fr)*.10);
-  const aligned=anchorDistance<=anchorTolerance;
-  const valid=roll<=7&&Math.abs(yawDeg)<=12&&od>=15&&od<=45&&oe>=15&&oe<=45&&dnp>=45&&dnp<=90&&aligned;
-  return{r,l,n,anchor,anchorDistance,anchorTolerance,aligned,ro,lo,fl,fr,ft,fb,eyeOuter,irisR,irisL,irisPx,mmPerPx,roll,yawDeg,od,oe,dnp,valid};
+  const project=p=>(p.x-n.x)*u.x+(p.y-n.y)*u.y;
+  const od=Math.abs(project(r))*mmPerPx*correction,oe=Math.abs(project(l))*mmPerPx*correction,dnp=od+oe;
+  // Plausibility checks only; they are not evidence of physical calibration accuracy.
+  const valid=roll<=7&&Math.abs(yawDeg)<=12&&od>=5&&od<=60&&oe>=5&&oe<=60&&dnp>=20&&dnp<=120;
+  return{r,l,n,anchor:n,ro,lo,fl,fr,ft,fb,eyeOuter,irisR,irisL,irisPx,mmPerPx,roll,yawDeg,od,oe,dnp,valid,calibrated:false};
+}
+g,od,oe,dnp,valid};
 }
 
 function draw(lm,g){
@@ -85,7 +78,7 @@ function draw(lm,g){
   for(let i=0;i<lm.length;i+=5){const p=screenPoint(lm[i]);if(p){ctx.beginPath();ctx.arc(p.x,p.y,1.1,0,Math.PI*2);ctx.fillStyle='rgba(102,211,255,.34)';ctx.fill()}}
   const outline=[10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,400,377,152,234,93,132,58,172,136,150,149,176,148,10];
   for(let i=0;i<outline.length-1;i++){const a=screenPoint(lm[outline[i]]),b=screenPoint(lm[outline[i+1]]);if(a&&b){ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.strokeStyle='rgba(122,222,255,.46)';ctx.lineWidth=1;ctx.stroke()}}
-  const anchor=g.anchor||fixedNasalPoint();
+  const anchor=g.anchor||g.n;
   [[g.r,g.l,'rgba(255,255,255,.6)'],[anchor,g.r,'rgba(255,204,102,.85)'],[anchor,g.l,'rgba(255,204,102,.85)']].forEach(([a,b,color])=>{ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.strokeStyle=color;ctx.lineWidth=1.5;ctx.stroke()});
   ctx.beginPath();ctx.arc(anchor.x,anchor.y,7,0,Math.PI*2);ctx.strokeStyle='rgba(255,204,102,.95)';ctx.lineWidth=2;ctx.stroke();
   ctx.beginPath();ctx.moveTo(anchor.x-10,anchor.y);ctx.lineTo(anchor.x+10,anchor.y);ctx.moveTo(anchor.x,anchor.y-10);ctx.lineTo(anchor.x,anchor.y+10);ctx.strokeStyle='rgba(255,204,102,.72)';ctx.lineWidth=1;ctx.stroke();
@@ -101,17 +94,17 @@ function updateBiometric(g){
   el.faceMetric.textContent=Math.round(distance(g.fl,g.fr))+' × '+Math.round(distance(g.ft,g.fb))+' px';
   const poseOk=Math.abs(g.roll)<=10&&Math.abs(g.yawDeg)<=18;
   setPill(el.faceState,'Mapeado','green');setPill(el.poseMetric,poseOk?'Frontal':'Ajustar',poseOk?'green':'amber');
-  el.scaleMetric.textContent=g.mmPerPx.toFixed(3)+' mm/px';
+  el.scaleMetric.textContent=g.mmPerPx.toFixed(3)+' mm/px*';
   el.rightMetric.textContent=g.r.x.toFixed(0)+', '+g.r.y.toFixed(0);el.leftMetric.textContent=g.l.x.toFixed(0)+', '+g.l.y.toFixed(0);el.noseMetric.textContent=g.n.x.toFixed(0)+', '+g.n.y.toFixed(0);
   if(state.readingLocked&&state.reading){return;}
-  if(g.valid){state.samples.push(g);if(state.samples.length>CFG.stableFrames)state.samples.shift();el.biometricNote.textContent='Face, íris e pose válidos • acumulando sequência estável.'}
-  else{el.biometricNote.textContent=g.aligned?'Rosto detectado • ajuste posição/pose para validar a medição.':'Ajuste o rosto até a ponte nasal coincidir com o marcador fixo.'}
+  if(g.valid){state.samples.push(g);if(state.samples.length>CFG.stableFrames)state.samples.shift();el.biometricNote.textContent='Geometria estimada • acumulando quadros estáveis; calibração física pendente.'}
+  else{el.biometricNote.textContent=g.aligned?'Rosto detectado • ajuste posição/pose para validar a medição.':'Mantenha o rosto frontal e estável.'}
   el.readingCount.textContent=state.samples.length+'/'+CFG.stableFrames+' quadros';
   if(state.samples.length<CFG.stableFrames){setPill(el.stabilityMetric,'Capturando');setPill(el.measurementState,'Capturando')}
   if(state.samples.length===CFG.stableFrames){
     const od=median(state.samples.map(x=>x.od)),oe=median(state.samples.map(x=>x.oe)),dnp=od+oe,spread=Math.max(deviation(state.samples.map(x=>x.od)),deviation(state.samples.map(x=>x.oe)),deviation(state.samples.map(x=>x.dnp)));
-    state.reading={od,oe,dnp,spread,frames:CFG.stableFrames,scale:median(state.samples.map(x=>x.mmPerPx)),roll:median(state.samples.map(x=>x.roll)),yaw:median(state.samples.map(x=>x.yawDeg)),method:'facial-landmarker+iris-eye-scale'};
-    el.od.textContent=od.toFixed(1)+' mm';el.oe.textContent=oe.toFixed(1)+' mm';el.dnp.textContent=dnp.toFixed(1)+' mm';el.viewerDnp.textContent=dnp.toFixed(1)+' mm';el.viewerOsBtn.disabled=false;el.zeroMetric.textContent='168 • automático';el.readingNote.textContent=spread<=.35?'24 quadros • variação baixa':'24 quadros • variação aceitável';setPill(el.stabilityMetric,spread<=.35?'Excelente':'Boa','green');setPill(el.measurementState,'Leitura pronta','green');el.useReading.disabled=false;
+    state.reading={od,oe,dnp,spread,frames:CFG.stableFrames,scale:median(state.samples.map(x=>x.mmPerPx)),roll:median(state.samples.map(x=>x.roll)),yaw:median(state.samples.map(x=>x.yawDeg)),method:'facial-landmarker+iris-reference-estimate',calibrated:false};
+    el.od.textContent=od.toFixed(1)+' mm*';el.oe.textContent=oe.toFixed(1)+' mm*';el.dnp.textContent=dnp.toFixed(1)+' mm*';el.viewerDnp.textContent=dnp.toFixed(1)+' mm*';el.viewerOsBtn.disabled=false;el.zeroMetric.textContent='168 • referência anatômica';el.readingNote.textContent=(spread<=.35?'24 quadros • variação baixa':'24 quadros • variação alta')+' • estimativa não calibrada';setPill(el.stabilityMetric,spread<=.35?'Estável':'Instável',spread<=.35?'green':'amber');setPill(el.measurementState,'Estimativa','amber');el.biometricNote.textContent='Estimativa não calibrada. Não utilizar como medida final para fabricação de lentes.';el.useReading.disabled=false;
   }
 }
 
@@ -155,7 +148,7 @@ function detectLoop(now){
     const raw=anatomy(lm);
     if(!raw){setPill(el.faceState,'Analisando','amber');el.capture.textContent='ANALISANDO ROSTO';el.cameraStatus.textContent='Câmera ativa • refinando olhos e íris';return}
     const g=anatomy(lm,trackPupils(raw));
-    draw(lm,g);updateBiometric(g);setPill(el.cameraQuality,g.valid?'Boa captura':'Ajustar',g.valid?'green':'amber');el.capture.textContent=g.valid?'ROSTO MAPEADO':(g.aligned?'AJUSTE DE POSE':'ALINHE A PONTE');el.cameraStatus.textContent=g.valid?'Câmera ativa • leitura facial válida':(g.aligned?'Câmera ativa • ajuste o rosto':'Centralize a ponte nasal no marcador fixo');state.errorCount=0;
+    draw(lm,g);updateBiometric(g);setPill(el.cameraQuality,g.valid?'Boa captura':'Ajustar',g.valid?'green':'amber');el.capture.textContent=g.valid?'ESTIMATIVA FACIAL':'AJUSTE DE POSE';el.cameraStatus.textContent=g.valid?'Câmera ativa • estimativa não calibrada':'Câmera ativa • ajuste o rosto';state.errorCount=0;
   }catch(error){
     state.errorCount++;console.error('MB DNP detection:',error);setPill(el.cameraQuality,'Erro facial','amber');el.capture.textContent='ERRO MOMENTÂNEO';el.cameraStatus.textContent='Motor facial tentando novamente';if(state.errorCount>=5)el.biometricNote.textContent='O motor facial encontrou erros repetidos. Reinicie a leitura se persistir.';
   }finally{state.busy=false}
@@ -182,10 +175,21 @@ function escapeHtml(value){return String(value??'').replace(/[&<>'\"]/g,ch=>({'&
 function buildOS(status='rascunho'){
   if(!state.reading)return null;
   const existing=state.os||{};
-  return{id:existing.id||crypto.randomUUID?.()||String(Date.now()),number:existing.number||osNumber(),status,schema:'MB.Optica.DNP.OS.v37',createdAt:existing.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString(),customer:{name:el.name.value.trim(),phone:el.phone.value.trim(),cpf:el.cpf.value.trim(),saleNumber:el.sale.value.trim(),type:el.type.value,notes:el.notes.value.trim()},measurement:{method:state.reading.method,odMm:state.reading.od,oeMm:state.reading.oe,dnpMm:state.reading.dnp,frames:state.reading.frames,stabilityMm:state.reading.spread,scaleMmPerPx:state.reading.scale,pose:{roll:state.reading.roll,yaw:state.reading.yaw},reference:'fixed-field-nasal-bridge'}};
+  return{id:existing.id||crypto.randomUUID?.()||String(Date.now()),number:existing.number||osNumber(),status,schema:'MB.Optica.DNP.OS.v38',createdAt:existing.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString(),customer:{name:el.name.value.trim(),phone:el.phone.value.trim(),cpf:el.cpf.value.trim(),saleNumber:el.sale.value.trim(),type:el.type.value,notes:el.notes.value.trim()},measurement:{method:state.reading.method,odMm:state.reading.od,oeMm:state.reading.oe,dnpMm:state.reading.dnp,frames:state.reading.frames,stabilityMm:state.reading.spread,scaleMmPerPx:state.reading.scale,pose:{roll:state.reading.roll,yaw:state.reading.yaw},reference:'mediapipe-landmark-168-estimate',calibrated:false,usageWarning:'Estimativa não calibrada; confirmar com pupilômetro antes do uso óptico'}};
 }
-function persistOS(status){const os=buildOS(status);if(!os)return null;const list=JSON.parse(localStorage.getItem(CFG.storeKey)||'[]');const index=list.findIndex(item=>item.id===os.id);if(index>=0)list[index]=os;else list.push(os);localStorage.setItem(CFG.storeKey,JSON.stringify(list));state.os=os;return os}
-function validateCustomer(){if(!el.name.value.trim()){el.osValidation.textContent='Informe o nome do cliente.';el.osValidation.className='validation error';el.osValidation.classList.remove('hidden');el.name.focus();return false}el.osValidation.className='validation hidden';return true}
+function readStoredOS(){
+  const current=JSON.parse(localStorage.getItem(CFG.storeKey)||'[]');
+  const legacy=JSON.parse(localStorage.getItem(CFG.legacyStoreKey)||'[]');
+  if(!Array.isArray(current)||!Array.isArray(legacy))throw new Error('Formato inválido no armazenamento local.');
+  const byId=new Map();[...legacy,...current].filter(x=>x&&typeof x==='object'&&x.id).forEach(x=>byId.set(x.id,x));return [...byId.values()];
+}
+function persistOS(status){
+  const os=buildOS(status),list=readStoredOS(),index=list.findIndex(item=>item.id===os.id);
+  if(index>=0)list[index]=os;else list.push(os);
+  try{localStorage.setItem(CFG.storeKey,JSON.stringify(list))}catch(error){throw new Error('Não foi possível salvar a O.S. neste navegador. Verifique permissões e espaço disponível.')}
+  state.os=os;return os;
+}
+function validateCustomer(){if(!el.name.value.trim()){el.osValidation.textContent='Informe o nome do cliente.';el.osValidation.className='validation error';el.osValidation.classList.remove('hidden');el.name.focus();return false}const digits=el.cpf.value.replace(/\D/g,'');if(digits&&digits.length!==11){el.osValidation.textContent='CPF deve conter 11 dígitos ou ficar vazio.';el.osValidation.className='validation error';el.osValidation.classList.remove('hidden');el.cpf.focus();return false}el.osValidation.className='validation hidden';return true}
 
 el.start.addEventListener('click',start);
 el.front.addEventListener('click',()=>switchCamera('user'));el.rear.addEventListener('click',()=>switchCamera('environment'));window.addEventListener('resize',resize);
@@ -195,13 +199,28 @@ function closeOsPanel(){el.osPanel.classList.add('hidden');el.osPanel.classList.
 el.useReading.addEventListener('click',openOsPanel);
 el.viewerOsBtn.addEventListener('click',openOsPanel);
 el.osClose.addEventListener('click',closeOsPanel);
-el.saveDraft.addEventListener('click',()=>{if(!validateCustomer())return;const os=persistOS('rascunho');el.osNumber.textContent=os.number;el.osValidation.textContent='Rascunho salvo neste dispositivo: '+os.number;el.osValidation.className='validation ok';el.osValidation.classList.remove('hidden')});
+el.saveDraft.addEventListener('click',()=>{if(!validateCustomer())return;try{const os=persistOS('rascunho');el.osNumber.textContent=os.number;el.osValidation.textContent='Rascunho salvo neste dispositivo: '+os.number+' • DNP estimada não calibrada';el.osValidation.className='validation ok';el.osValidation.classList.remove('hidden')}catch(error){el.osValidation.textContent=error.message||'Falha ao salvar O.S.';el.osValidation.className='validation error';el.osValidation.classList.remove('hidden')}});
 async function loadPdfLibrary(){if(window.jspdf?.jsPDF)return window.jspdf.jsPDF;if(loadPdfLibrary.promise)return loadPdfLibrary.promise;loadPdfLibrary.promise=new Promise((resolve,reject)=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js';s.onload=()=>window.jspdf?.jsPDF?resolve(window.jspdf.jsPDF):reject(new Error('jsPDF carregou sem disponibilizar o motor PDF.'));s.onerror=()=>reject(new Error('Não foi possível carregar o motor PDF.'));document.head.appendChild(s)});return loadPdfLibrary.promise}
-async function generatePdf(os){const jsPDF=await loadPdfLibrary();if(!jsPDF)throw new Error('Biblioteca PDF não carregada.');const doc=new jsPDF({unit:'mm',format:'a4'}),m=os.measurement,c=os.customer;doc.setFont('helvetica','bold');doc.setFontSize(20);doc.text('MB.Óptica',20,22);doc.setFontSize(13);doc.text('ORDEM DE SERVIÇO — DNP',20,31);doc.setFont('helvetica','normal');doc.setFontSize(10);doc.text(os.number,190,22,{align:'right'});doc.line(20,36,190,36);doc.setFontSize(11);doc.setFont('helvetica','bold');doc.text('CLIENTE',20,47);doc.setFont('helvetica','normal');doc.text('Nome: '+(c.name||'—'),20,55);doc.text('Telefone: '+(c.phone||'—'),20,62);doc.text('CPF: '+(c.cpf||'—'),20,69);doc.text('Nº da venda: '+(c.saleNumber||'—'),20,76);doc.text('Tipo: '+(c.type||'—'),20,83);doc.setFont('helvetica','bold');doc.text('MEDIÇÃO FACIAL DA DNP',20,96);doc.setFont('helvetica','normal');doc.setFontSize(18);doc.text('DNP: '+m.dnpMm.toFixed(1)+' mm',20,108);doc.setFontSize(13);doc.text('OD: '+m.odMm.toFixed(1)+' mm     OE: '+m.oeMm.toFixed(1)+' mm',20,117);doc.setFontSize(10);doc.text('Estabilidade: '+m.stabilityMm.toFixed(2)+' mm',20,127);doc.text('Quadros analisados: '+m.frames,20,134);doc.text('Método: Face Landmarker + referência fixa de ponte + escala combinada de íris/face',20,141);doc.text('Referência fixa do campo biométrico • ponte alinhada ao marcador',20,148);doc.text('Pose — roll: '+m.pose.roll.toFixed(1)+'°  yaw: '+m.pose.yaw.toFixed(1)+'°',20,155);if(c.notes){doc.setFont('helvetica','bold');doc.text('OBSERVAÇÕES',20,168);doc.setFont('helvetica','normal');const lines=doc.splitTextToSize(c.notes,170);doc.text(lines,20,176)}doc.setFontSize(8);doc.setTextColor(90);doc.text('MB.Óptica DNP • documento gerado localmente neste dispositivo',20,285);doc.save(os.number+'.pdf');return true}
-el.generate.addEventListener('click',async()=>{if(!validateCustomer())return;const os=persistOS('gerada');el.osNumber.textContent=os.number;el.savedTitle.textContent='O.S. '+os.number;el.savedSummary.textContent=os.customer.name+' • DNP '+os.measurement.dnpMm.toFixed(1)+' mm • OD '+os.measurement.odMm.toFixed(1)+' mm • OE '+os.measurement.oeMm.toFixed(1)+' mm.';closeOsPanel();el.saved.classList.remove('hidden');setStep(4);try{await generatePdf(os);el.savedSummary.textContent+=' PDF gerado automaticamente.';el.pdf.textContent='Gerar PDF novamente'}catch(error){console.error('MB DNP PDF:',error);el.savedSummary.textContent+=' O.S. registrada. O PDF automático não foi gerado; use o botão Gerar PDF.'}});
+async function generatePdf(os){
+  const jsPDF=await loadPdfLibrary();if(!jsPDF)throw new Error('Biblioteca PDF não carregada.');
+  const doc=new jsPDF({unit:'mm',format:'a4'}),m=os.measurement,c=os.customer;
+  doc.setFont('helvetica','bold');doc.setFontSize(20);doc.text('MB.Óptica',20,22);doc.setFontSize(13);doc.text('ORDEM DE SERVIÇO — DNP ESTIMADA',20,31);
+  doc.setFont('helvetica','normal');doc.setFontSize(10);doc.text(os.number,190,22,{align:'right'});doc.line(20,36,190,36);
+  doc.setFontSize(11);doc.setFont('helvetica','bold');doc.text('CLIENTE',20,47);doc.setFont('helvetica','normal');
+  doc.text('Nome: '+(c.name||'—'),20,55);doc.text('Telefone: '+(c.phone||'—'),20,62);doc.text('CPF: '+(c.cpf||'—'),20,69);doc.text('Nº da venda: '+(c.saleNumber||'—'),20,76);doc.text('Tipo: '+(c.type||'—'),20,83);
+  doc.setFont('helvetica','bold');doc.text('MEDIÇÃO FACIAL — NÃO CALIBRADA',20,96);doc.setFont('helvetica','normal');doc.setFontSize(18);
+  doc.text('DNP estimada: '+m.dnpMm.toFixed(1)+' mm*',20,108);doc.setFontSize(13);doc.text('OD: '+m.odMm.toFixed(1)+' mm*     OE: '+m.oeMm.toFixed(1)+' mm*',20,117);
+  doc.setFontSize(10);doc.text('Variação entre quadros: '+m.stabilityMm.toFixed(2)+' mm',20,127);doc.text('Quadros analisados: '+m.frames,20,134);
+  doc.text('Método: Face Landmarker + escala aproximada da íris',20,141);doc.text('Origem geométrica: landmark nasal 168',20,148);doc.text('Pose — roll: '+m.pose.roll.toFixed(1)+'°  yaw: '+m.pose.yaw.toFixed(1)+'°',20,155);
+  doc.setFont('helvetica','bold');doc.setTextColor(170,35,35);
+  doc.text('AVISO: não usar para fabricação/centragem de lentes sem confirmação por pupilômetro.',20,172,{maxWidth:170});doc.setTextColor(90);
+  if(c.notes){doc.setFont('helvetica','bold');doc.text('OBSERVAÇÕES',20,188);doc.setFont('helvetica','normal');doc.text(doc.splitTextToSize(c.notes,170),20,196)}
+  doc.setFontSize(8);doc.text('MB.Óptica DNP • documento gerado localmente neste dispositivo',20,285);doc.save(os.number+'.pdf');return true;
+}
+el.generate.addEventListener('click',async()=>{if(!validateCustomer())return;let os;try{os=persistOS('gerada')}catch(error){el.osValidation.textContent=error.message||'Falha ao salvar O.S.';el.osValidation.className='validation error';el.osValidation.classList.remove('hidden');return}el.osNumber.textContent=os.number;el.savedTitle.textContent='O.S. '+os.number;el.savedSummary.textContent=os.customer.name+' • DNP estimada '+os.measurement.dnpMm.toFixed(1)+' mm* • OD '+os.measurement.odMm.toFixed(1)+' mm* • OE '+os.measurement.oeMm.toFixed(1)+' mm*. NÃO CALIBRADA: confirmar por pupilômetro antes de uso óptico.'closeOsPanel();el.saved.classList.remove('hidden');setStep(4);try{await generatePdf(os);el.savedSummary.textContent+=' PDF gerado automaticamente.';el.pdf.textContent='Gerar PDF novamente'}catch(error){console.error('MB DNP PDF:',error);el.savedSummary.textContent+=' O.S. registrada. O PDF automático não foi gerado; use o botão Gerar PDF.'}});
 el.pdf.addEventListener('click',async()=>{if(!state.os)return;el.pdf.disabled=true;el.pdf.textContent='Gerando PDF…';try{await generatePdf(state.os);el.pdf.textContent='PDF gerado';}catch(error){console.error('MB DNP PDF:',error);el.pdf.textContent='Falha ao gerar PDF';}finally{setTimeout(()=>{el.pdf.disabled=false;el.pdf.textContent='Gerar PDF novamente'},1400)}});
 el.print.addEventListener('click',()=>{if(!state.os)return;const os=state.os,m=os.measurement,c=os.customer,w=window.open('','_blank','width=800,height=700');if(!w)return;w.document.write('<!doctype html><html><head><title>'+escapeHtml(os.number)+'</title><style>body{font-family:Arial;padding:32px;color:#111}.box{border:1px solid #aaa;padding:16px;margin:12px 0}.big{font-size:28px;font-weight:800}</style></head><body><h1>MB.Óptica — O.S.</h1><div>'+escapeHtml(os.number)+'</div><div class="box"><b>Cliente</b><br>'+escapeHtml(c.name)+'<br>'+escapeHtml(c.phone)+' '+escapeHtml(c.cpf)+'</div><div class="box"><b>Leitura facial</b><div class="big">DNP '+m.dnpMm.toFixed(1)+' mm</div>OD '+m.odMm.toFixed(1)+' mm • OE '+m.oeMm.toFixed(1)+' mm</div><div class="box">Método: Face Landmarker + referência fixa de ponte • '+m.frames+' quadros</div></body></html>');w.document.close();w.focus();w.print()});
 el.another.addEventListener('click',()=>{stopCamera();location.reload()});
-el.settings.addEventListener('click',()=>alert('MB DNP v36\n\nLeitura facial local com MediaPipe Face Landmarker.\nNenhuma imagem do rosto é salva pelo aplicativo.\nOs dados da O.S. ficam no armazenamento local deste dispositivo.\n\nA medição deve ser validada contra instrumento de referência antes do uso profissional.'));
+el.settings.addEventListener('click',()=>alert('MB DNP v38\n\nLeitura facial local com MediaPipe Face Landmarker.\nOs valores são ESTIMATIVAS NÃO CALIBRADAS.\nNenhuma imagem do rosto é salva pelo aplicativo.\nAs O.S. ficam neste dispositivo e não sincronizam com o MB Gestão Inteligente.\n\nConfirme cada valor com pupilômetro antes do uso óptico.'));
 window.addEventListener('beforeunload',stopCamera);
 resize();

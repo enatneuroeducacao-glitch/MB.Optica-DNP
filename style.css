@@ -46,3 +46,6 @@ html.os-open,body.os-open{overflow:hidden}
 footer{text-align:center;color:#53677e;font-size:8px;margin-top:12px}.hidden{display:none!important}
 @media(max-width:900px){.workspace{grid-template-columns:1fr}.viewer{grid-column:1;grid-row:auto;min-height:0;aspect-ratio:4/3}.camera-panel,.biometric-panel,.measurement-panel{grid-column:1;grid-row:auto}.measurement-panel{position:static}.face-guide{left:18%;right:18%}}
 @media(max-width:600px){.app{width:100%;padding:9px}.brand{font-size:23px}.step{font-size:8px}.step b{display:block;margin:0 auto 3px}.intro{padding:20px}.intro h1{font-size:26px}.feature-grid{grid-template-columns:1fr}.viewer{aspect-ratio:3/4}.face-guide{left:14%;right:14%;top:7%;bottom:7%}.measure-grid{grid-template-columns:1fr 1fr}.measure.total{grid-column:1/-1}.form-grid{grid-template-columns:1fr 1fr}.form-grid label.full{grid-column:1/-1}.button-row{grid-template-columns:1fr}.anatomy{grid-template-columns:1fr 1fr 1fr}}
+
+/* v38: clarify estimates, warnings and numeric readings */
+.notice strong{display:block;margin-bottom:3px}.notice span{display:block}.measure strong{font-variant-numeric:tabular-nums}
